@@ -1,4 +1,4 @@
-package io.github.eduardosantiag0.kaizan_companion.domain.models;
+package io.github.eduardosantiag0.kaizan_companion.miniapp;
 
 import java.util.UUID;
 

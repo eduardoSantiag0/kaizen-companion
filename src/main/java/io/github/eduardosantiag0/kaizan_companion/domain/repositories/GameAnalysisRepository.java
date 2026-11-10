@@ -3,7 +3,7 @@ package io.github.eduardosantiag0.kaizan_companion.domain.repositories;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.AnalysisJobEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.GameAnalysisEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.TelegramChatEntity;
-import io.github.eduardosantiag0.kaizan_companion.domain.models.GameHistoryDto;
+import io.github.eduardosantiag0.kaizan_companion.miniapp.GameHistoryDto;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -23,4 +23,6 @@ public interface GameAnalysisRepository extends JpaRepository<GameAnalysisEntity
         ORDER BY g.id
     """)
     List<GameHistoryDto> findHistoryByChat(@Param("chat") TelegramChatEntity chat);
+
+    TelegramChatEntity chat(TelegramChatEntity chat);
 }

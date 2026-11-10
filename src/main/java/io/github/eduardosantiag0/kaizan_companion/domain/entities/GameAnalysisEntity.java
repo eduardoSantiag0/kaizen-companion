@@ -43,6 +43,17 @@ public class GameAnalysisEntity {
     @Setter
     private String fullAnalysedGame;
 
+
+    @Column(name = "black_player")
+    private String blackPlayer;
+
+    @Column(name = "white_player")
+    private String whitePlayer;
+
+    @Column(name = "game_rank")
+    private String gameRank;
+
+
     public GameAnalysisEntity(AnalysisJobEntity jobEntity, TelegramChatEntity chat) {
         this.jobEntity = jobEntity;
         this.chat = chat;

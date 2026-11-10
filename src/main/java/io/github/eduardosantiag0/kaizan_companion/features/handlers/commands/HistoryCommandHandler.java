@@ -2,7 +2,7 @@ package io.github.eduardosantiag0.kaizan_companion.features.handlers.commands;
 
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.TelegramChatEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.models.ECommands;
-import io.github.eduardosantiag0.kaizan_companion.domain.models.GameHistoryDto;
+import io.github.eduardosantiag0.kaizan_companion.miniapp.GameHistoryDto;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.GameAnalysisRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.dtos.GamePhase;
