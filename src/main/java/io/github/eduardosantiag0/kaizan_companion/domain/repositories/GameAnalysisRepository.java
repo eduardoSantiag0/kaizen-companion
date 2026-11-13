@@ -15,14 +15,13 @@ public interface GameAnalysisRepository extends JpaRepository<GameAnalysisEntity
     boolean existsByJobEntity(AnalysisJobEntity jobEntity);
 
     @Query("""
-        SELECT new io.github.eduardosantiag0.kaizan_companion.domain.models.GameHistoryDto(
-            g.id, g.jobEntity.correlationId, g.openingAnalysed, g.middlegameAnalysed, g.endgameAnalysed
+        SELECT new io.github.eduardosantiag0.kaizan_companion.miniapp.GameHistoryDto(
+            g.id, g.jobEntity.correlationId, g.openingAnalysed, g.middlegameAnalysed, g.endgameAnalysed,
+            g.blackPlayer, g.whitePlayer, g.gameRank
         )
         FROM GameAnalysisEntity g
         WHERE g.chat = :chat
-        ORDER BY g.id
+        ORDER BY g.jobEntity.createdAt DESC
     """)
     List<GameHistoryDto> findHistoryByChat(@Param("chat") TelegramChatEntity chat);
-
-    TelegramChatEntity chat(TelegramChatEntity chat);
 }

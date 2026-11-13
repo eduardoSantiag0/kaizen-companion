@@ -7,6 +7,9 @@ public record GameHistoryDto(
         UUID correlationId,
         String openingAnalysed,
         String middlegameAnalysed,
-        String endgameAnalysed
+        String endgameAnalysed,
+        String blackPlayer,
+        String whitePlayer,
+        String gameRank
 ) {
 }

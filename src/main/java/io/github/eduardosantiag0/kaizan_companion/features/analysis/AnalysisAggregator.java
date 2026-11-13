@@ -17,6 +17,8 @@ import io.github.eduardosantiag0.kaizan_companion.utils.MessageFormatter;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithFile;
 import io.github.eduardosantiag0.kaizan_companion.infra.IStorageProvider;
+import io.github.eduardosantiag0.sgf.model.SgfNode;
+import io.github.eduardosantiag0.sgf.parser.SgfParser;
 import jakarta.mail.MessagingException;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
@@ -73,6 +75,7 @@ public class AnalysisAggregator {
                 .orElseThrow(() -> new RuntimeException("Chat not found"));
 
         GameAnalysisEntity gameAnalysisEntity = new GameAnalysisEntity(jobEntity, chatEntity);
+        setPlayersInfo(gameAnalysisEntity, jobEntity.getOriginalGame());
 
         List<Future<?>> futures = new ArrayList<>();
         String[] sgfs = new String[3];
@@ -139,6 +142,30 @@ public class AnalysisAggregator {
             return;
 
         dispatchExternalDeliveries(chatEntity, sgfsInBytes);
+    }
+
+    private void setPlayersInfo(GameAnalysisEntity gameAnalysisEntity, String originalGame) {
+        if (originalGame == null) {
+            return;
+        }
+
+        SgfNode root = new SgfParser().parse(originalGame).firstGame().root();
+
+        String blackPlayer = root.value("PB").orElse(null);
+        String whitePlayer = root.value("PW").orElse(null);
+        String blackRank = root.value("BR").orElse(null);
+        String whiteRank = root.value("WR").orElse(null);
+
+        gameAnalysisEntity.setBlackPlayer(blackPlayer);
+        gameAnalysisEntity.setWhitePlayer(whitePlayer);
+
+        if (blackRank != null && whiteRank != null) {
+            gameAnalysisEntity.setGameRank(blackRank + "/" + whiteRank);
+        } else if (blackRank != null) {
+            gameAnalysisEntity.setGameRank(blackRank);
+        } else if (whiteRank != null) {
+            gameAnalysisEntity.setGameRank(whiteRank);
+        }
     }
 
     private void dispatchExternalDeliveries(TelegramChatEntity chatEntity,

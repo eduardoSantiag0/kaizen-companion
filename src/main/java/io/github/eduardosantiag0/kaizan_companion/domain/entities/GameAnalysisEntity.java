@@ -45,12 +45,15 @@ public class GameAnalysisEntity {
 
 
     @Column(name = "black_player")
+    @Setter
     private String blackPlayer;
 
     @Column(name = "white_player")
+    @Setter
     private String whitePlayer;
 
     @Column(name = "game_rank")
+    @Setter
     private String gameRank;
 
 

@@ -1,46 +1,73 @@
 package io.github.eduardosantiag0.kaizan_companion.miniapp;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 @Service
 public class TelegramInitDataService {
 
+    @Value("${telegram.bot.token}")
+    private String botToken;
+
     private final HmacService hmacService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public TelegramInitDataService(HmacService hmacService) {
         this.hmacService = hmacService;
     }
 
+
     public Long validateAndGetUserId(String initData) {
 
-        // https://docs.telegram-mini-apps.com/platform/init-data?utm_source=chatgpt.com
+        Map<String, String> decodedData = new TreeMap<>();
+
+        // Separa cada parâmetro pelo '&'
+        // é necessário porque o data check é baseado no na string pura
+        for (String item : initData.split("&")) {
+            String[] par = item.split("=", 2);
+            // Colocar o par no hashmap
+            if (par.length == 2) {
+                String chave = URLDecoder.decode(par[0], StandardCharsets.UTF_8);
+                String valor = URLDecoder.decode(par[1], StandardCharsets.UTF_8);
+                decodedData.put(chave, valor);
+            }
+        }
+
+        // Remove o hash e recria a string
+        String receivedHash = decodedData.remove("hash");
+        String dataCheckString = decodedData.entrySet().stream()
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(Collectors.joining("\n"));
 
 
+        if (!hmacService.isValidTelegramWebAppData(dataCheckString, receivedHash)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Assinatura inválida");
+        }
 
-        https://core.telegram.org/bots/webapps?utm_source=chatgpt.com#validating-data-received-via-the-mini-app
+        String userJson = decodedData.get("user");
+        if (userJson == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Dados do usuário ausentes");
+        }
+
+        JsonNode userNode = objectMapper.readTree(userJson);
+        JsonNode idNode = userNode.get("id");
+        if (idNode == null || !idNode.isNumber()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "ID do usuário inválido");
+        }
+        return idNode.asLong();
 
 
-//        Data-check-string is a chain of all received fields, sorted alphabetically, in the format key=<value> with a line feed character ('
-//        ', 0x0A) used as separator – e.g., 'auth_date=<auth_date> query_id=<query_id> user=<user>'.
-        return null;
     }
 }
-//
-//Validating data received via the Mini App
-//To validate data received via the Mini App, one should send the data from the Telegram.WebApp.initData field to the bot's backend. The data is a query string, which is composed of a series of field-value pairs.
-//
-//You can verify the integrity of the data received by comparing the received hash parameter with the hexadecimal representation of the HMAC-SHA-256 signature of the data-check-string with the secret key, which is the HMAC-SHA-256 signature of the bot's token with the constant string WebAppData used as a key.
-//
-//Data-check-string is a chain of all received fields, sorted alphabetically, in the format key=<value> with a line feed character ('
-//                                                                                                                                          ', 0x0A) used as separator – e.g., 'auth_date=<auth_date> query_id=<query_id> user=<user>'.
-//
-//                                                                                                                                          The full check might look like:
-//
-//                                                                                                                                          data_check_string = ...
-//                                                                                                                                          secret_key = HMAC_SHA256(<bot_token>, "WebAppData")
-//if (hex(HMAC_SHA256(data_check_string, secret_key)) == hash) {
-//        // data is from Telegram
-//        }
-//To prevent the use of outdated data, you can additionally check the auth_date field, which contains a Unix timestamp of when it was received by the Mini App.
-//
-//        Once validated, the data may be used on your server. Complex data types are represented as JSON-serialized objects.

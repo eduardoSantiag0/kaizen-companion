@@ -27,12 +27,14 @@ public class MiniAppController {
     // Get one game
 
     @GetMapping("/history")
-    public ResponseEntity<List<GameHistoryDto>> getAllGames(
+    public ResponseEntity<List<GameHistoryItemDto>> getAllGames(
             @RequestHeader(
                     value = "Authorization",
                     required = false
             ) String authorization
     ) {
+
+        // Recebe um HashMap<String, String>
         if (authorization == null ||
                 !authorization.startsWith("tma ")) {
             throw new ResponseStatusException(
@@ -41,14 +43,13 @@ public class MiniAppController {
         }
 
 
-        String initData = authorization.substring(4);
 
-//        https://core.telegram.org/bots/webapps?utm_source=chatgpt.com#validating-data-received-via-the-mini-app
+        String initData = authorization.substring(4);
 
         Long telegramUserId =
                 telegramInitDataService.validateAndGetUserId(initData);
 
-        List<GameHistoryDto> games =
+        List<GameHistoryItemDto> games =
                 service.findAllByTelegramUserId(telegramUserId);
 
         return ResponseEntity.ok(games);
