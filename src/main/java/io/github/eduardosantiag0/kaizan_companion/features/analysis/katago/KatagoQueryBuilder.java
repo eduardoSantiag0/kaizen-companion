@@ -16,8 +16,8 @@ public class KatagoQueryBuilder {
     public KatagoQuery buildQuery(SgfGameTree game, UUID correlationId) {
         SgfNode root = game.root();
 
-        String whiteRank = String.valueOf(root.value("WR"));
-        String blackRank = String.valueOf(root.value("BR"));
+        String whiteRank = root.value("WR").orElse("");
+        String blackRank = root.value("BR").orElse("");
         String humanSLProfile;
 
         if (whiteRank.isEmpty() && !blackRank.isEmpty()) {

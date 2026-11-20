@@ -16,6 +16,7 @@ import io.github.eduardosantiag0.kaizan_companion.utils.FilenamePattern;
 import io.github.eduardosantiag0.kaizan_companion.utils.MessageFormatter;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithFile;
+import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithText;
 import io.github.eduardosantiag0.kaizan_companion.infra.IStorageProvider;
 import io.github.eduardosantiag0.sgf.model.SgfNode;
 import io.github.eduardosantiag0.sgf.parser.SgfParser;
@@ -73,6 +74,20 @@ public class AnalysisAggregator {
 
         TelegramChatEntity chatEntity = chatRepository.findById(response.output().chatId())
                 .orElseThrow(() -> new RuntimeException("Chat not found"));
+
+        if (response.output().output() == null) {
+            // Contrato do runpod-handler: falha de processamento = status FAILED,
+            // output null. Sem essa checagem, a linha abaixo que lê
+            // output().criticalPoints() dá NPE pra todo job que falha no RunPod.
+            jobEntity.setJobStatus(JobStatus.FAILED);
+            jobRepository.save(jobEntity);
+            chatEntity.setWaitingForAnalysis(false);
+            log.error("KataGo retornou falha para o job {} (correlationId={}, status={})",
+                    jobEntity.getId(), response.output().correlationId(), response.output().status());
+            notificationService.sendErrorMessage(
+                    new ReplyWithText(response.output().chatId(), MessageFormatter.requestFailed()));
+            return;
+        }
 
         GameAnalysisEntity gameAnalysisEntity = new GameAnalysisEntity(jobEntity, chatEntity);
         setPlayersInfo(gameAnalysisEntity, jobEntity.getOriginalGame());
