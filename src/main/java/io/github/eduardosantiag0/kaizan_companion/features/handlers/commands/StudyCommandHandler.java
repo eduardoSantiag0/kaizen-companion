@@ -73,6 +73,8 @@ public class StudyCommandHandler implements ICommandHandler {
                 return;
             }
 
+            notificationService.sendMessageToChat(new ReplyWithText(chatId, MessageFormatter.requestReceived()));
+
             String id = source.extractId(url);
 
             ByteArrayResource fileData = source.downloadGameById(id);

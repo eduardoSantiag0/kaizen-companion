@@ -109,6 +109,18 @@ public class MessageFormatter {
     }
 
 
+    public static String requestReceived() {
+        return """
+            \n
+            ⏳ REQUEST RECEIVED
+
+            Fetching your game and preparing the analysis...
+
+            ● ─── ◌ ─── ○
+            """;
+    }
+
+
     public static String requestsIsInQueue(String correlationId) {
         return """
             \n
