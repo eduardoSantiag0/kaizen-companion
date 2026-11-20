@@ -96,6 +96,9 @@ public class AnalysisListener {
         KatagoErrorMessage response = runPodClient.sendEvent(event, postUrl,
                 channel, deliveryTag);
 
+        if (response == null) {
+            return;
+        }
 
         if (response.error() != null) {
             job.setJobStatus(JobStatus.FAILED);
