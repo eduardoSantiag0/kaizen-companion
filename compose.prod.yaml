@@ -1,0 +1,103 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: kaizan-caddy
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - kaizan-caddy-data:/data
+      - kaizan-caddy-config:/config
+    depends_on:
+      - app
+
+  app:
+    build: .
+    container_name: kaizan-companion
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: "5672"
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER:-admin}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    expose:
+      - "8080"
+    volumes:
+      - kaizan-data:/app/data
+      - kaizan-tmp:/app/tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: kaizan-postgres
+    restart: unless-stopped
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_wal_senders=4"
+      - "-c"
+      - "max_replication_slots=4"
+    environment:
+      POSTGRES_DB: ${DB_NAME:-kaizan-db9}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - kaizan-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME:-kaizan-db9}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: kaizan-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - kaizan-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  status-api:
+    build:
+      context: ../runpod-handler
+      dockerfile: Dockerfile.status-api
+    container_name: kaizan-status-api
+    restart: unless-stopped
+    environment:
+      RUNPOD_API_KEY: ${RUNPOD_API_KEY}
+      RUNPOD_ENDPOINT_ID: ${RUNPOD_ENDPOINT_ID}
+      RUNPOD_HEADER_SECRET: ${RUNPOD_HEADER_SECRET}
+    expose:
+      - "8971"
+
+volumes:
+  kaizan-postgres-data:
+  kaizan-rabbitmq-data:
+  # /app/data holds the Debezium offset file
+  kaizan-data:
+  kaizan-tmp:
+  # Caddy's issued certificate + account data
+  kaizan-caddy-data:
+  kaizan-caddy-config:

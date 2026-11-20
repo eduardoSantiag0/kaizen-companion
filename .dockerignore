@@ -1,0 +1,12 @@
+target/
+tmp/
+data/
+.git/
+.idea/
+.vs/
+.vscode/
+*.iml
+_diagrams/
+images/
+*.md
+.env

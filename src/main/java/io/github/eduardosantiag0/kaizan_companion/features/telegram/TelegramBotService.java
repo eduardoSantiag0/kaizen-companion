@@ -14,13 +14,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.commands.BotCommand;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
-import org.telegram.telegrambots.longpolling.interfaces.LongPollingUpdateConsumer;
-import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
 
 
 import java.io.IOException;
@@ -28,11 +25,9 @@ import java.util.List;
 
 import static io.github.eduardosantiag0.kaizan_companion.domain.models.ECommands.*;
 
+
 @Service
 public class TelegramBotService
-        implements
-        SpringLongPollingBot,
-        LongPollingSingleThreadUpdateConsumer
 {
 
     private static final Logger logger = LoggerFactory.getLogger(TelegramBotService.class);
@@ -81,21 +76,6 @@ public class TelegramBotService
     }
 
 
-    public String getBotUsername() {
-        return this.botName;
-    }
-
-    @Override
-    public String getBotToken() {
-        return this.botToken;
-    }
-
-    @Override
-    public LongPollingUpdateConsumer getUpdatesConsumer() {
-        return this;
-    }
-
-    @Override
     public void consume(Update update) {
         try {
             handle(update);

@@ -6,7 +6,7 @@ CREATE TABLE oauth_connections_db (
     access_token        TEXT,
     refresh_token       TEXT,
     expires_at_token    TIMESTAMP WITH TIME ZONE,
-    chat_id             BIGINT NOT NULL
+    chat_id             BIGINT NOT NULL,
 
     CONSTRAINT fk_oauth_chat
         FOREIGN KEY (chat_id)

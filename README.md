@@ -143,11 +143,12 @@ docker compose up
 | Integration | Variables |
 | --- | --- |
 | **Telegram** | `BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` |
-| **PostgreSQL** | `DB_USER`, `DB_PASSWORD` |
-| **RunPod** | `RUNPOD_API`, `RUNPOD_HEADER_SECRET` |
+| **PostgreSQL** | `DB_USER`, `DB_PASSWORD`, `DB_NAME` (prod only — dev hardcodes `localhost`) |
+| **RunPod** | `KATAGO_POST_URL_SYNC`, `RUNPOD_API_KEY`, `RUNPOD_HEADER_SECRET` (prod only — dev points at the local RunPod SDK emulator instead) |
 | **Google Drive** | `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_SECRET` |
 | **Email** | `SENDER_MAIL_ADDRESS`, `SENDER_MAIL_PASSWORD` |
 | **Encryption** | `ENCRYPTION_KEY` (32-byte key, in the format expected by the application) |
+| **Mini App (CORS)** | `MINIAPP_ORIGIN` — the Vercel origin allowed to call `GET /kaizan/api/v1/katago/history` |
 
 **Webhook note:** Telegram must be configured with the same webhook secret. Receiving Telegram updates and RunPod callbacks during local development also requires a publicly reachable HTTPS endpoint or a tunnel to the local application.
 
@@ -162,3 +163,47 @@ docker compose up
 ```bash
 ./mvnw test
 ```
+
+---
+
+## 🚀 Production deploy (single VM)
+
+The `prod` profile (`application-prod.properties`) plus `Dockerfile` and
+`compose.prod.yaml` target a single VM running Caddy, the app, Postgres, and
+RabbitMQ together — e.g. an Oracle Cloud instance.
+
+```bash
+cp .env.example .env   # fill in real secrets, including DOMAIN — never commit .env
+docker compose -f compose.prod.yaml up -d --build
+```
+
+- **HTTPS via Caddy**: `Caddyfile` + the `caddy` service in
+  `compose.prod.yaml` terminate TLS and reverse-proxy to the app, requesting
+  and renewing a Let's Encrypt certificate for `DOMAIN` automatically — no
+  certbot step. `DOMAIN` must already resolve (A/AAAA record) to this VM's
+  public IP, and ports `80`/`443` must be reachable from the internet
+  (Let's Encrypt's HTTP-01 challenge needs `:80`; Oracle Cloud's default
+  security list blocks both by default — open them in the VCN's security
+  list/NSG first). Only `caddy` publishes a host port; the app itself is only
+  reachable inside the compose network, at `app:8080`.
+- **Postgres runs with `wal_level=logical`** (set via `compose.prod.yaml`'s
+  `command:`) — required for Debezium's replication slot (`pgoutput`
+  plugin, no extra extension needed). If you point `DB_HOST`/`DB_PORT` at an
+  external/managed Postgres instead of the bundled container, that instance
+  needs the same setting and a user with the `REPLICATION` privilege.
+- **RunPod**: `KATAGO_POST_URL_SYNC` is the deployed RunPod Serverless
+  endpoint's run URL (e.g. `https://api.runpod.ai/v2/<ENDPOINT_ID>/runsync`);
+  `RUNPOD_API_KEY` authenticates the outbound call to RunPod.
+  `RUNPOD_HEADER_SECRET` authenticates the inbound callback and **must be the
+  exact same value** configured as an environment variable on the RunPod
+  endpoint itself — see
+  [kaizen-runpod-katago](https://github.com/eduardoSantiag0/kaizen-runpod-katago)'s
+  README for `KAIZAN_CALLBACK_URL`, which must point at
+  `https://<DOMAIN>/kaizan/api/v1/katago`.
+- **Telegram webhook**: once Caddy has a valid certificate, point
+  `setWebhook` at `https://<DOMAIN>/kaizan/api/v1` with `secret_token` equal
+  to `TELEGRAM_WEBHOOK_SECRET`. Telegram refuses plain HTTP, bare IPs, and
+  self-signed certs, so this step only works after `DOMAIN` is live.
+
+Going live still needs explicit approval each time — this repo is set up for
+deployment, not deployed on its own initiative.

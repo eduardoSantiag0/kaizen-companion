@@ -11,6 +11,9 @@ import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.extern.slf4j.Slf4j;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpStatusCodeException;
@@ -27,9 +30,14 @@ public class RunPodClient {
 
     private final RestTemplate rest = new RestTemplate();
     private final NotificationService notificationService;
+    private final String runpodApiKey;
 
-    public RunPodClient(NotificationService notificationService) {
+    public RunPodClient(
+            NotificationService notificationService,
+            @Value("${katago.runpod.api-key:}") String runpodApiKey
+    ) {
         this.notificationService = notificationService;
+        this.runpodApiKey = runpodApiKey;
     }
 
     @Bulkhead(name = "runpod-bulkhead")
@@ -37,9 +45,14 @@ public class RunPodClient {
     public KatagoErrorMessage sendEvent(AnalysisCreatedEvent event, String postUrl, Channel channel, long deliveryTag) throws IOException {
         Map<String, AnalysisCreatedEvent> request = Map.of("input", event);
 
+        HttpHeaders headers = new HttpHeaders();
+        if (runpodApiKey != null && !runpodApiKey.isBlank()) {
+            headers.setBearerAuth(runpodApiKey);
+        }
+
         return rest.postForObject(
                 postUrl,
-                request,
+                new HttpEntity<>(request, headers),
                 KatagoErrorMessage.class
         );
     }

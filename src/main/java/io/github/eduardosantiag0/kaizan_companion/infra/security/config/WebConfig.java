@@ -13,11 +13,22 @@ public class WebConfig implements WebMvcConfigurer {
     @Autowired
     private TelegramTokenInterceptor secretTokenInterceptor;
 
+    @Value("${app.cors.miniapp-origin}")
+    private String miniAppOrigin;
+
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(secretTokenInterceptor)
                 .addPathPatterns("/kaizan/api/v1");
+    }
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/kaizan/api/v1/katago/history")
+                .allowedOrigins(miniAppOrigin)
+                .allowedMethods("GET")
+                .allowedHeaders("Authorization");
     }
 
 }
