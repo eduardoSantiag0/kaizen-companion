@@ -93,7 +93,8 @@ public class AddOgsCommandHandler implements ICommandHandler {
                             true
                     ));
 
-            UserInfoEntity userInfo = new UserInfoEntity(entity);
+            UserInfoEntity userInfo = userInfoRepository.findByChat(entity)
+                    .orElseGet(() -> new UserInfoEntity(entity));
 
             userInfo.setOgsAccountId(playerInfo.id());
             userInfo.setOgsAccountName(playerInfo.username());

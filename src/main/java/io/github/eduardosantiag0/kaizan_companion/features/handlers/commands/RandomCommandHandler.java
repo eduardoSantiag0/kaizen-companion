@@ -5,7 +5,10 @@ import io.github.eduardosantiag0.kaizan_companion.domain.models.ECommands;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.messaging.AnalysisProducer;
 import io.github.eduardosantiag0.kaizan_companion.features.handlers.ICommandHandler;
+import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
+import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithText;
 import io.github.eduardosantiag0.kaizan_companion.features.sources.ogs.OgsGameDownloader;
+import io.github.eduardosantiag0.kaizan_companion.utils.MessageFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.stereotype.Service;
@@ -22,6 +25,7 @@ public class RandomCommandHandler implements ICommandHandler {
     private final OgsGameDownloader ogsGameDownloader;
     private final TelegramChatRepository telegramChatRepository;
     private final AnalysisProducer analysisProducer;
+    private final NotificationService notificationService;
 
     private static final Map<Short, String> RANDOM_GAMES = Map.ofEntries(
             Map.entry((short) 1, "86597702"),
@@ -84,10 +88,11 @@ public class RandomCommandHandler implements ICommandHandler {
 //    https://online-go.com/game/84595803
 
 
-    public RandomCommandHandler(OgsGameDownloader ogsGameDownloader,TelegramChatRepository telegramChatRepository, AnalysisProducer analysisProducer) {
+    public RandomCommandHandler(OgsGameDownloader ogsGameDownloader,TelegramChatRepository telegramChatRepository, AnalysisProducer analysisProducer, NotificationService notificationService) {
         this.ogsGameDownloader = ogsGameDownloader;
         this.telegramChatRepository = telegramChatRepository;
         this.analysisProducer = analysisProducer;
+        this.notificationService = notificationService;
     }
 
     @Override
@@ -97,6 +102,9 @@ public class RandomCommandHandler implements ICommandHandler {
 
     @Override
     public void executeCommand(Update update) throws TelegramApiException, IOException {
+
+        Long chatId = update.getMessage().getChatId();
+        notificationService.sendMessageToChat(new ReplyWithText(chatId, MessageFormatter.requestReceived()));
 
         short rand = (short) ((short)(Math.random() * RANDOM_GAMES.size()) + 1);
 
@@ -110,7 +118,6 @@ public class RandomCommandHandler implements ICommandHandler {
         }
 
 
-        Long chatId = update.getMessage().getChatId();
         var chat = update.getMessage().getChat();
         TelegramChatEntity entity = telegramChatRepository
                 .findById(chatId)

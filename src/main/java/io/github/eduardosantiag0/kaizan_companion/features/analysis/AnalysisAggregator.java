@@ -92,6 +92,16 @@ public class AnalysisAggregator {
         GameAnalysisEntity gameAnalysisEntity = new GameAnalysisEntity(jobEntity, chatEntity);
         setPlayersInfo(gameAnalysisEntity, jobEntity.getOriginalGame());
 
+        String completionMessage;
+        try {
+            completionMessage = MessageFormatter.requestCompleted(
+                    jobEntity.getOriginalGame().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            completionMessage = MessageFormatter.requestCompleted("Your game");
+        }
+        notificationService.sendMessageToChat(
+                new ReplyWithText(response.output().chatId(), completionMessage));
+
         List<Future<?>> futures = new ArrayList<>();
         String[] sgfs = new String[3];
         byte[][] sgfsInBytes = new byte[3][];
@@ -126,7 +136,7 @@ public class AnalysisAggregator {
                 storageProvider.store(data, point.phase(), uuid);
                 notificationService.sendMessageToChat(
                         new ReplyWithFile(response.output().chatId(), data,
-                                MessageFormatter.requestCompleted(data),
+                                "",
                                 point.phase(), uuid
                         )
                 );

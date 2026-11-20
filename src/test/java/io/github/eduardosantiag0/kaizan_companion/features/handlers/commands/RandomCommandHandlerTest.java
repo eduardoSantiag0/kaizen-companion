@@ -4,6 +4,7 @@ import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramCh
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.JobSubmissionService;
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.messaging.AnalysisProducer;
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.katago.KatagoQueryBuilder;
+import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.sources.ogs.OgsGameDownloader;
 import io.github.eduardosantiag0.kaizan_companion.support.TelegramFixtures;
 import org.junit.jupiter.api.Test;
@@ -41,7 +42,7 @@ class RandomCommandHandlerTest {
         );
 
         RandomCommandHandler handler =
-                new RandomCommandHandler(ogsGameDownloader, chatRepository, analysisProducer);
+                new RandomCommandHandler(ogsGameDownloader, chatRepository, analysisProducer, mock(NotificationService.class));
 
         var update = TelegramFixtures.textUpdate(1L, "/random");
 

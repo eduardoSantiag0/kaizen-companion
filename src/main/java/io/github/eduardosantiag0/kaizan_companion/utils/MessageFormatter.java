@@ -42,36 +42,59 @@ public class MessageFormatter {
     public static String formatStart(String firstName) {
         return """
             \n
-            ╭─── ⛩ KAIZEN COMPANION ⛩ ───╮
+           ⛩️ KAIZEN COMPANION
+            ━━━━━━━━━━━━━━━━━━━━━
 
-              Welcome, %s!
+            Welcome, %s! 👋
 
-              I analyse your Go (Baduk) games with
-              KataGo and send back a review split
-              into opening, middlegame and endgame.
+            Every game is an opportunity to improve.
 
-            ╰───────────────────────────────╯
+            Kaizen uses KataGo to analyze your Go
+            (Baduk) games, highlighting the most
+            important moments of each phase:
 
-            ◉ GET STARTED
+            ◉ Opening
+            ◉ Middlegame
+            ◉ Endgame
 
-              1. Link an account (optional, lets
-                 you use /random and /last_game):
-                 /add_account_ogs <username>
-                 /add_account_dragon <url>
+            ━━━━━━━━━━━━━━━━━━━━━
 
-              2. Or just send a game right away:
-                 /study <url>
-                 /collection <url1> <url2> ...
+            🎯 START STUDYING
 
-              3. Track and manage:
-                 /queue             pending analyses
-                 /resign            cancel a running one
-                 /my_profile        your linked accounts
-                 /add_email         also receive by email
-                 /add_google_drive  store results in Drive
-                 /unlink            remove a link
+            Analyze your first game:
 
-            ● ━━━━━━━ ◉ ━━━━━━━ ○
+            /study <game_url>
+
+            Or analyze multiple games:
+
+            /collection <url1> <url2> ...
+
+            🔗 CONNECT YOUR ACCOUNT
+
+            Link your OGS or Dragon Go Server
+            account to unlock /random and /last_game.
+
+            /add_account_ogs <username>
+            /add_account_dragon <profile_url>
+
+            📋 MANAGE YOUR ANALYSES
+
+            /queue — View pending analyses
+            /resign — Cancel an analysis
+            /my_profile — View linked accounts
+
+            📬 INTEGRATIONS
+
+            /add_email — Receive reviews by email
+            /add_google_drive — Save to Google Drive
+            /unlink — Remove a connection
+
+            ━━━━━━━━━━━━━━━━━━━━━
+
+            ● Learn from your games.
+            ○ Improve one move at a time.
+
+            ⛩️ Your next move starts here.
             """.formatted(firstName);
     }
 
@@ -90,7 +113,7 @@ public class MessageFormatter {
     private static String formatCompleted(String details) {
         return """
             \n
-            ╭─── ⛩ KAIZEN COMPANION ⛩ ───╮
+            ╭ ⛩ KAIZEN COMPANION ⛩ ╮
 
                    ● ─┬─ ○
                    │  │  │
@@ -100,7 +123,7 @@ public class MessageFormatter {
 
               ◉ ANALYSIS COMPLETE!
 
-            ╰─────────────────────────────╯
+            ╰────────────────────╯
 
             %s
 
@@ -140,13 +163,14 @@ public class MessageFormatter {
     public static String requestFailed() {
         return """
             \n
-            ┌─ ✕ REQUEST FAILED ✕  ─────────┐
+            ┌─ ✕ REQUEST FAILED ✕  ─┐
 
-              We were not able to process your request.
+              We were not able to process
+              your request.
 
               ↻ Try again?
 
-            └───────────────────────┘
+            └────────────────────┘
             """;
 
     }
@@ -155,25 +179,26 @@ public class MessageFormatter {
     public static String unknownMessage() {
         return """
             \n
-            ┌─ ✕ I DIDN'T UNDERSTAND ✕ ───────┐
+            ┌─ ✕ I DIDN'T UNDERSTAND ✕ ──┐
 
               Send a game link (OGS or Dragon),
-              or use /start to see what I can do.
+              or
+              use /start to see what I can do.
 
-            └─────────────────────────────────┘
+            └──────────────────────────┘
             """;
     }
 
     public static String systemOffline() {
         return """
         \n
-        ┌─ ✕ SYSTEM OFFLINE ✕ ───────────┐
+        ┌─ ✕ SYSTEM OFFLINE ✕ ──┐
 
           Our service is temporarily unavailable.
 
           ↻ Please try again later.
 
-        └───────────────────────────────┘
+        └───────────────────────┘
         """;
     }
 

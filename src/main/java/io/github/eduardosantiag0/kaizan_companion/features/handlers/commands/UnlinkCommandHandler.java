@@ -87,7 +87,7 @@ public class UnlinkCommandHandler implements ICommandHandler {
 
 
         notificationService.sendMessageToChat(new ReplyWithText(
-                chatId, MessageFormatter.formatUnlinked(target)
+                chatId, MessageFormatter.formatMyProfile(userInfo)
         ));
     }
 }

@@ -103,7 +103,8 @@ public class AddDgsCommandHandler implements ICommandHandler {
                             true
                     ));
 
-            UserInfoEntity userInfo = new UserInfoEntity(entity);
+            UserInfoEntity userInfo = userInfoRepository.findByChat(entity)
+                    .orElseGet(() -> new UserInfoEntity(entity));
 
             userInfo.setDgsAccountId(uid);
             userInfoRepository.save(userInfo);

@@ -66,11 +66,14 @@ public class UserInfoEntity {
 
     @Override
     public String toString() {
+        boolean driveLinked = chat != null && chat.isDriveLinked();
+
         return """
             %s Username: %s
             %s Email: %s
             %s OGS Account: %s
             %s Dragon Go Server ID: %s
+            %s Google Drive: %s
             """.formatted(
                 telegramUsername != null ? "◉" : "○",
                 Objects.toString(telegramUsername, "Not linked"),
@@ -82,7 +85,10 @@ public class UserInfoEntity {
                 Objects.toString(ogsAccountName, "Not linked"),
 
                 dgsAccountId!= null ? "◉" : "○",
-                Objects.toString(dgsAccountId, "Not linked")
+                Objects.toString(dgsAccountId, "Not linked"),
+
+                driveLinked ? "◉" : "○",
+                driveLinked ? "Linked" : "Not linked"
 
         );
     }
