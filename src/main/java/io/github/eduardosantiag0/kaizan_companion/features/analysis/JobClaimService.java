@@ -22,7 +22,7 @@ public class JobClaimService {
     @Transactional
     public boolean claim(AnalysisJobEntity job) {
         Instant leaseUntil = Instant.now().plusSeconds(LEASE_TIME);
-        boolean claimed = jobRepository.claimJob(job.getId(), leaseUntil);
+        boolean claimed = jobRepository.claimJob(job.getId(), leaseUntil) > 0;
 
         if (claimed) {
             job.setJobStatus(JobStatus.SUBMITTING);

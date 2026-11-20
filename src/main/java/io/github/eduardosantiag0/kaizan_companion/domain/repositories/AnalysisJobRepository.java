@@ -38,5 +38,5 @@ public interface AnalysisJobRepository extends JpaRepository<AnalysisJobEntity, 
     WHERE id = :id
       AND job_status = 'ANALYSIS_REQUESTED'
     """, nativeQuery = true)
-    boolean claimJob(@Param("id") UUID id, @Param("leaseUntil") Instant leaseUntil);
+    int claimJob(@Param("id") UUID id, @Param("leaseUntil") Instant leaseUntil);
 }
