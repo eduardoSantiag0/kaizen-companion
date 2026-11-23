@@ -13,6 +13,7 @@ import io.github.eduardosantiag0.kaizan_companion.features.handlers.ICommandHand
 import io.github.eduardosantiag0.kaizan_companion.features.sources.ogs.OgsGameDownloader;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithText;
+import io.github.eduardosantiag0.kaizan_companion.utils.MessageFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
@@ -61,6 +62,7 @@ public class LastGameCommandHandler implements ICommandHandler {
             throw new OgsAccountNotConfiguredException("Chat:" + chatId);
         }
 
+        notificationService.sendMessageToChat(new ReplyWithText(chatId, MessageFormatter.requestReceived()));
 
         ByteArrayResource fileData = ogsGameDownloader.downloadLastGame(user.getOgsAccountId());
 

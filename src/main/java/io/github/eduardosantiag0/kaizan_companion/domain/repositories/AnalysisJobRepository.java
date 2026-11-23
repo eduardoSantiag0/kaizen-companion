@@ -17,6 +17,8 @@ import java.util.UUID;
 public interface AnalysisJobRepository extends JpaRepository<AnalysisJobEntity, UUID> {
     Optional<AnalysisJobEntity> findByCorrelationId(UUID correlationId);
 
+    Optional<AnalysisJobEntity> findByIdAndChat(UUID id, TelegramChatEntity chat);
+
     List<AnalysisJobEntity> findByChatAndJobStatusIn(
             TelegramChatEntity chat,
             Collection<JobStatus> statuses

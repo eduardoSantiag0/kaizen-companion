@@ -3,9 +3,11 @@ package io.github.eduardosantiag0.kaizan_companion.miniapp;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.AnalysisJobEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.JobStatus;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.TelegramChatEntity;
+import io.github.eduardosantiag0.kaizan_companion.domain.entities.GameAnalysisEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.AnalysisJobRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.GameAnalysisRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
+import io.github.eduardosantiag0.kaizan_companion.features.analysis.RunPodCancelClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -19,8 +21,11 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MiniAppServiceTest {
@@ -68,7 +73,7 @@ class MiniAppServiceTest {
                 eq(EnumSet.of(JobStatus.ANALYSIS_REQUESTED, JobStatus.SUBMITTING, JobStatus.IN_QUEUE))))
                 .thenReturn(List.of(waitingJob, runningJob));
 
-        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository);
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, mock(RunPodCancelClient.class));
 
         List<GameHistoryItemDto> result = service.findAllByTelegramUserId(1L);
 
@@ -95,8 +100,114 @@ class MiniAppServiceTest {
 
         when(chatRepository.findById(99L)).thenReturn(Optional.empty());
 
-        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository);
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, mock(RunPodCancelClient.class));
 
         assertThrows(ResponseStatusException.class, () -> service.findAllByTelegramUserId(99L));
+    }
+
+    @Test
+    void resignGame_onInProgressJob_cancelsOnRunPod_andMarksCancelledLocally() {
+        GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
+        TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
+        AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
+        RunPodCancelClient runPodCancelClient = mock(RunPodCancelClient.class);
+
+        TelegramChatEntity chat = new TelegramChatEntity(1L, "Ana", "ana", "private", false);
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+
+        UUID correlationId = UUID.randomUUID();
+        AnalysisJobEntity job = new AnalysisJobEntity(chat, Instant.now(), correlationId);
+        job.setJobStatus(JobStatus.IN_QUEUE);
+        UUID jobId = UUID.randomUUID();
+        setId(job, jobId);
+
+        when(jobRepository.findByIdAndChat(jobId, chat)).thenReturn(Optional.of(job));
+        when(runPodCancelClient.cancel(correlationId.toString())).thenReturn(JobStatus.CANCELLED);
+
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, runPodCancelClient);
+
+        service.resignGame(1L, jobId);
+
+        assertEquals(JobStatus.CANCELLED, job.getJobStatus());
+        verify(jobRepository).save(job);
+        verify(gameRepository, never()).delete(any());
+    }
+
+    @Test
+    void resignGame_onInProgressJob_whenRunPodFailsToCancel_throwsBadGateway_andDoesNotMarkCancelled() {
+        GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
+        TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
+        AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
+        RunPodCancelClient runPodCancelClient = mock(RunPodCancelClient.class);
+
+        TelegramChatEntity chat = new TelegramChatEntity(1L, "Ana", "ana", "private", false);
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+
+        UUID correlationId = UUID.randomUUID();
+        AnalysisJobEntity job = new AnalysisJobEntity(chat, Instant.now(), correlationId);
+        job.setJobStatus(JobStatus.IN_QUEUE);
+        UUID jobId = UUID.randomUUID();
+        setId(job, jobId);
+
+        when(jobRepository.findByIdAndChat(jobId, chat)).thenReturn(Optional.of(job));
+        when(runPodCancelClient.cancel(correlationId.toString())).thenReturn(null);
+
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, runPodCancelClient);
+
+        assertThrows(ResponseStatusException.class, () -> service.resignGame(1L, jobId));
+        verify(jobRepository, never()).save(any());
+    }
+
+    @Test
+    void resignGame_onDoneGame_deletesIt_withoutCallingRunPod() {
+        GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
+        TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
+        AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
+        RunPodCancelClient runPodCancelClient = mock(RunPodCancelClient.class);
+
+        TelegramChatEntity chat = new TelegramChatEntity(1L, "Ana", "ana", "private", false);
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+
+        UUID gameId = UUID.randomUUID();
+        when(jobRepository.findByIdAndChat(gameId, chat)).thenReturn(Optional.empty());
+
+        GameAnalysisEntity game = mock(GameAnalysisEntity.class);
+        when(gameRepository.findByIdAndChat(gameId, chat)).thenReturn(Optional.of(game));
+
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, runPodCancelClient);
+
+        service.resignGame(1L, gameId);
+
+        verify(gameRepository).delete(game);
+        verify(runPodCancelClient, never()).cancel(any());
+    }
+
+    @Test
+    void resignGame_onUnknownId_throwsNotFound() {
+        GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
+        TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
+        AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
+        RunPodCancelClient runPodCancelClient = mock(RunPodCancelClient.class);
+
+        TelegramChatEntity chat = new TelegramChatEntity(1L, "Ana", "ana", "private", false);
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+
+        UUID unknownId = UUID.randomUUID();
+        when(jobRepository.findByIdAndChat(unknownId, chat)).thenReturn(Optional.empty());
+        when(gameRepository.findByIdAndChat(unknownId, chat)).thenReturn(Optional.empty());
+
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, runPodCancelClient);
+
+        assertThrows(ResponseStatusException.class, () -> service.resignGame(1L, unknownId));
+    }
+
+    private static void setId(AnalysisJobEntity job, UUID id) {
+        try {
+            Field field = AnalysisJobEntity.class.getDeclaredField("id");
+            field.setAccessible(true);
+            field.set(job, id);
+        } catch (ReflectiveOperationException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

@@ -3,15 +3,11 @@ package io.github.eduardosantiag0.kaizan_companion.features.handlers.commands;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.JobStatus;
 import io.github.eduardosantiag0.kaizan_companion.exceptions.telegram.CommandMisuseException;
 import io.github.eduardosantiag0.kaizan_companion.domain.models.ECommands;
-import io.github.eduardosantiag0.kaizan_companion.features.analysis.dtos.runpod.RunPodCancelledResponse;
+import io.github.eduardosantiag0.kaizan_companion.features.analysis.RunPodCancelClient;
 import io.github.eduardosantiag0.kaizan_companion.features.handlers.ICommandHandler;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithText;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -20,23 +16,12 @@ import java.io.IOException;
 @Service
 public class ResignCommandHandler implements ICommandHandler {
 
-    record CancelRequest(String correlationId){}
-
-    private static final String RUNPOD_SECRET_HEADER = "X-Kaizen-Secret";
-
-    private final RestTemplate rest = new RestTemplate();
     private final NotificationService notificationService;
+    private final RunPodCancelClient runPodCancelClient;
 
-    @Value("${katago.runpod.status.url}")
-    private String RUNPOD_URL;
-
-    @Value("${katago.runpod.header-secret}")
-    private String runpodHeaderSecret;
-
-    private final String endpoint = "/cancel";
-
-    public ResignCommandHandler(NotificationService notificationService) {
+    public ResignCommandHandler(NotificationService notificationService, RunPodCancelClient runPodCancelClient) {
         this.notificationService = notificationService;
+        this.runPodCancelClient = runPodCancelClient;
     }
 
     @Override
@@ -56,22 +41,14 @@ public class ResignCommandHandler implements ICommandHandler {
 
         String jobId = fullMessage[1];
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(RUNPOD_SECRET_HEADER, runpodHeaderSecret);
-
-        RunPodCancelledResponse response = rest.postForObject(
-                RUNPOD_URL+endpoint,
-                new HttpEntity<>(new CancelRequest(jobId), headers),
-                RunPodCancelledResponse.class
-        );
+        JobStatus status = runPodCancelClient.cancel(jobId);
 
         String text;
 
-        if (response.status() == JobStatus.CANCELLED) {
+        if (status == JobStatus.CANCELLED) {
             text = "Job: " + jobId + " was cancelled\n";
         } else {
             text = "It was not possible to cancel job: " + jobId;
-
         }
 
         notificationService.sendMessageToChat(

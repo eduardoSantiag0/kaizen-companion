@@ -9,10 +9,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface GameAnalysisRepository extends JpaRepository<GameAnalysisEntity, UUID> {
     boolean existsByJobEntity(AnalysisJobEntity jobEntity);
+
+    Optional<GameAnalysisEntity> findByIdAndChat(UUID id, TelegramChatEntity chat);
 
     @Query("""
         SELECT new io.github.eduardosantiag0.kaizan_companion.miniapp.GameHistoryDto(

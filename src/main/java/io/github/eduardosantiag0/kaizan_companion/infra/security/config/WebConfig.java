@@ -29,6 +29,11 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(miniAppOrigin)
                 .allowedMethods("GET")
                 .allowedHeaders("Authorization");
+
+        registry.addMapping("/kaizan/api/v1/katago/history/*")
+                .allowedOrigins(miniAppOrigin)
+                .allowedMethods("DELETE")
+                .allowedHeaders("Authorization");
     }
 
 }

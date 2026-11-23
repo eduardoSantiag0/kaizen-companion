@@ -1,5 +1,6 @@
 package io.github.eduardosantiag0.kaizan_companion.features.handlers.commands;
 
+import io.github.eduardosantiag0.kaizan_companion.features.analysis.RunPodCancelClient;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithText;
 import io.github.eduardosantiag0.kaizan_companion.support.TelegramFixtures;
@@ -16,7 +17,7 @@ class ResignCommandHandlerTest {
     @Test
     void executeCommand_onMissingArgument_mustReplyWithUsage_insteadOfThrowing() {
         NotificationService notificationService = mock(NotificationService.class);
-        ResignCommandHandler handler = new ResignCommandHandler(notificationService);
+        ResignCommandHandler handler = new ResignCommandHandler(notificationService, mock(RunPodCancelClient.class));
 
         var update = TelegramFixtures.textUpdate(1L, "/resign");
 
