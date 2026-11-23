@@ -1,9 +1,10 @@
 package io.github.eduardosantiag0.kaizan_companion.features.handlers.commands;
 
-import io.github.eduardosantiag0.kaizan_companion.domain.entities.JobStatus;
+import io.github.eduardosantiag0.kaizan_companion.domain.entities.AnalysisJobEntity;
+import io.github.eduardosantiag0.kaizan_companion.domain.repositories.AnalysisJobRepository;
 import io.github.eduardosantiag0.kaizan_companion.exceptions.telegram.CommandMisuseException;
 import io.github.eduardosantiag0.kaizan_companion.domain.models.ECommands;
-import io.github.eduardosantiag0.kaizan_companion.features.analysis.RunPodCancelClient;
+import io.github.eduardosantiag0.kaizan_companion.features.analysis.JobCancellationService;
 import io.github.eduardosantiag0.kaizan_companion.features.handlers.ICommandHandler;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithText;
@@ -12,16 +13,21 @@ import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 import java.io.IOException;
+import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class ResignCommandHandler implements ICommandHandler {
 
     private final NotificationService notificationService;
-    private final RunPodCancelClient runPodCancelClient;
+    private final JobCancellationService jobCancellationService;
+    private final AnalysisJobRepository jobRepository;
 
-    public ResignCommandHandler(NotificationService notificationService, RunPodCancelClient runPodCancelClient) {
+    public ResignCommandHandler(NotificationService notificationService, JobCancellationService jobCancellationService,
+                                 AnalysisJobRepository jobRepository) {
         this.notificationService = notificationService;
-        this.runPodCancelClient = runPodCancelClient;
+        this.jobCancellationService = jobCancellationService;
+        this.jobRepository = jobRepository;
     }
 
     @Override
@@ -39,16 +45,16 @@ public class ResignCommandHandler implements ICommandHandler {
             return;
         }
 
-        String jobId = fullMessage[1];
+        String jobIdText = fullMessage[1];
 
-        JobStatus status = runPodCancelClient.cancel(jobId);
+        Optional<AnalysisJobEntity> job = parseJobId(jobIdText).flatMap(jobRepository::findByCorrelationId);
 
         String text;
 
-        if (status == JobStatus.CANCELLED) {
-            text = "Job: " + jobId + " was cancelled\n";
+        if (job.isPresent() && jobCancellationService.cancel(job.get())) {
+            text = "Job: " + jobIdText + " was cancelled\n";
         } else {
-            text = "It was not possible to cancel job: " + jobId;
+            text = "It was not possible to cancel job: " + jobIdText;
         }
 
         notificationService.sendMessageToChat(
@@ -56,5 +62,13 @@ public class ResignCommandHandler implements ICommandHandler {
                         text
                 )
         );
+    }
+
+    private Optional<UUID> parseJobId(String value) {
+        try {
+            return Optional.of(UUID.fromString(value));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 }

@@ -7,7 +7,7 @@ import io.github.eduardosantiag0.kaizan_companion.domain.entities.TelegramChatEn
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.AnalysisJobRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.GameAnalysisRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
-import io.github.eduardosantiag0.kaizan_companion.features.analysis.RunPodCancelClient;
+import io.github.eduardosantiag0.kaizan_companion.features.analysis.JobCancellationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,14 +30,14 @@ public class MiniAppService {
     private final GameAnalysisRepository gameRepository;
     private final TelegramChatRepository telegramChatRepository;
     private final AnalysisJobRepository analysisJobRepository;
-    private final RunPodCancelClient runPodCancelClient;
+    private final JobCancellationService jobCancellationService;
 
     public MiniAppService(GameAnalysisRepository gameRepository, TelegramChatRepository telegramChatRepository,
-                           AnalysisJobRepository analysisJobRepository, RunPodCancelClient runPodCancelClient) {
+                           AnalysisJobRepository analysisJobRepository, JobCancellationService jobCancellationService) {
         this.gameRepository = gameRepository;
         this.telegramChatRepository = telegramChatRepository;
         this.analysisJobRepository = analysisJobRepository;
-        this.runPodCancelClient = runPodCancelClient;
+        this.jobCancellationService = jobCancellationService;
     }
 
     public List<GameHistoryItemDto> findAllByTelegramUserId(Long telegramUserId) {
@@ -68,14 +68,9 @@ public class MiniAppService {
     }
 
     private void cancelJob(AnalysisJobEntity job) {
-        JobStatus status = runPodCancelClient.cancel(job.getCorrelationId().toString());
-
-        if (status != JobStatus.CANCELLED) {
+        if (!jobCancellationService.cancel(job)) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "RunPod could not cancel this job");
         }
-
-        job.setJobStatus(JobStatus.CANCELLED);
-        analysisJobRepository.save(job);
     }
 
     private List<GameHistoryItemDto> mergedHistoryFor(TelegramChatEntity chatEntity) {

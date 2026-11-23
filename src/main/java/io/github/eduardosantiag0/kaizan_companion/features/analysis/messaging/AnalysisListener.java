@@ -111,6 +111,7 @@ public class AnalysisListener {
             return;
         }
 
+        job.setRunpodJobId(response.id());
         job.setJobStatus(JobStatus.IN_QUEUE);
         jobRepository.save(job);
 

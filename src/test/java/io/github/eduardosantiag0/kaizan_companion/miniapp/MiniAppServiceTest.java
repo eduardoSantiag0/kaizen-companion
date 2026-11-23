@@ -7,7 +7,7 @@ import io.github.eduardosantiag0.kaizan_companion.domain.entities.GameAnalysisEn
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.AnalysisJobRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.GameAnalysisRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
-import io.github.eduardosantiag0.kaizan_companion.features.analysis.RunPodCancelClient;
+import io.github.eduardosantiag0.kaizan_companion.features.analysis.JobCancellationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -73,7 +73,7 @@ class MiniAppServiceTest {
                 eq(EnumSet.of(JobStatus.ANALYSIS_REQUESTED, JobStatus.SUBMITTING, JobStatus.IN_QUEUE))))
                 .thenReturn(List.of(waitingJob, runningJob));
 
-        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, mock(RunPodCancelClient.class));
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, mock(JobCancellationService.class));
 
         List<GameHistoryItemDto> result = service.findAllByTelegramUserId(1L);
 
@@ -100,70 +100,66 @@ class MiniAppServiceTest {
 
         when(chatRepository.findById(99L)).thenReturn(Optional.empty());
 
-        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, mock(RunPodCancelClient.class));
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, mock(JobCancellationService.class));
 
         assertThrows(ResponseStatusException.class, () -> service.findAllByTelegramUserId(99L));
     }
 
     @Test
-    void resignGame_onInProgressJob_cancelsOnRunPod_andMarksCancelledLocally() {
+    void resignGame_onInProgressJob_delegatesToJobCancellationService() {
         GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
         TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
         AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
-        RunPodCancelClient runPodCancelClient = mock(RunPodCancelClient.class);
+        JobCancellationService jobCancellationService = mock(JobCancellationService.class);
 
         TelegramChatEntity chat = new TelegramChatEntity(1L, "Ana", "ana", "private", false);
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        UUID correlationId = UUID.randomUUID();
-        AnalysisJobEntity job = new AnalysisJobEntity(chat, Instant.now(), correlationId);
+        AnalysisJobEntity job = new AnalysisJobEntity(chat, Instant.now(), UUID.randomUUID());
         job.setJobStatus(JobStatus.IN_QUEUE);
         UUID jobId = UUID.randomUUID();
         setId(job, jobId);
 
         when(jobRepository.findByIdAndChat(jobId, chat)).thenReturn(Optional.of(job));
-        when(runPodCancelClient.cancel(correlationId.toString())).thenReturn(JobStatus.CANCELLED);
+        when(jobCancellationService.cancel(job)).thenReturn(true);
 
-        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, runPodCancelClient);
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, jobCancellationService);
 
         service.resignGame(1L, jobId);
 
-        assertEquals(JobStatus.CANCELLED, job.getJobStatus());
-        verify(jobRepository).save(job);
+        verify(jobCancellationService).cancel(job);
         verify(gameRepository, never()).delete(any());
     }
 
     @Test
-    void resignGame_onInProgressJob_whenRunPodFailsToCancel_throwsBadGateway_andDoesNotMarkCancelled() {
+    void resignGame_onInProgressJob_whenCancellationFails_throwsBadGateway() {
         GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
         TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
         AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
-        RunPodCancelClient runPodCancelClient = mock(RunPodCancelClient.class);
+        JobCancellationService jobCancellationService = mock(JobCancellationService.class);
 
         TelegramChatEntity chat = new TelegramChatEntity(1L, "Ana", "ana", "private", false);
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        UUID correlationId = UUID.randomUUID();
-        AnalysisJobEntity job = new AnalysisJobEntity(chat, Instant.now(), correlationId);
+        AnalysisJobEntity job = new AnalysisJobEntity(chat, Instant.now(), UUID.randomUUID());
         job.setJobStatus(JobStatus.IN_QUEUE);
         UUID jobId = UUID.randomUUID();
         setId(job, jobId);
 
         when(jobRepository.findByIdAndChat(jobId, chat)).thenReturn(Optional.of(job));
-        when(runPodCancelClient.cancel(correlationId.toString())).thenReturn(null);
+        when(jobCancellationService.cancel(job)).thenReturn(false);
 
-        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, runPodCancelClient);
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, jobCancellationService);
 
         assertThrows(ResponseStatusException.class, () -> service.resignGame(1L, jobId));
-        verify(jobRepository, never()).save(any());
     }
 
     @Test
-    void resignGame_onDoneGame_deletesIt_withoutCallingRunPod() {
+    void resignGame_onDoneGame_deletesIt_withoutCallingJobCancellationService() {
         GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
         TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
         AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
-        RunPodCancelClient runPodCancelClient = mock(RunPodCancelClient.class);
+        JobCancellationService jobCancellationService = mock(JobCancellationService.class);
 
         TelegramChatEntity chat = new TelegramChatEntity(1L, "Ana", "ana", "private", false);
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
@@ -174,12 +170,12 @@ class MiniAppServiceTest {
         GameAnalysisEntity game = mock(GameAnalysisEntity.class);
         when(gameRepository.findByIdAndChat(gameId, chat)).thenReturn(Optional.of(game));
 
-        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, runPodCancelClient);
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, jobCancellationService);
 
         service.resignGame(1L, gameId);
 
         verify(gameRepository).delete(game);
-        verify(runPodCancelClient, never()).cancel(any());
+        verify(jobCancellationService, never()).cancel(any());
     }
 
     @Test
@@ -187,7 +183,7 @@ class MiniAppServiceTest {
         GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
         TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
         AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
-        RunPodCancelClient runPodCancelClient = mock(RunPodCancelClient.class);
+        JobCancellationService jobCancellationService = mock(JobCancellationService.class);
 
         TelegramChatEntity chat = new TelegramChatEntity(1L, "Ana", "ana", "private", false);
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
@@ -196,7 +192,7 @@ class MiniAppServiceTest {
         when(jobRepository.findByIdAndChat(unknownId, chat)).thenReturn(Optional.empty());
         when(gameRepository.findByIdAndChat(unknownId, chat)).thenReturn(Optional.empty());
 
-        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, runPodCancelClient);
+        MiniAppService service = new MiniAppService(gameRepository, chatRepository, jobRepository, jobCancellationService);
 
         assertThrows(ResponseStatusException.class, () -> service.resignGame(1L, unknownId));
     }

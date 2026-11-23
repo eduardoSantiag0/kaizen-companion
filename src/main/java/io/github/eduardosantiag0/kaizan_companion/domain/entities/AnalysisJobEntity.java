@@ -68,6 +68,10 @@ public class AnalysisJobEntity {
     @Setter
     private Instant leaseUntil;
 
+    @Column(name = "runpod_job_id")
+    @Setter
+    private String runpodJobId;
+
     public AnalysisJobEntity(TelegramChatEntity chat, Instant now, UUID correlationId, String source, String originalGame, JobStatus jobStatus) {
 
     }

@@ -9,6 +9,7 @@ import io.github.eduardosantiag0.kaizan_companion.features.analysis.JobClaimServ
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.RunPodClient;
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.dtos.AnalysisCreatedEvent;
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.dtos.AnalysisDTO;
+import io.github.eduardosantiag0.kaizan_companion.features.analysis.errors.KatagoErrorMessage;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +18,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -56,5 +58,39 @@ class AnalysisListenerTest {
         assertDoesNotThrow(() -> listener.listen(event, channel, deliveryTag),
                 "the delivery was already nacked by sendEvent; listen() must not also throw "
                         + "and signal the same delivery as failed a second time");
+    }
+
+    @Test
+    void listen_onRunPodAcceptance_persistsRunPodsOwnJobId_notTheCorrelationId() throws Exception {
+        AnalysisJobRepository jobRepository = mock(AnalysisJobRepository.class);
+        NotificationService notificationService = mock(NotificationService.class);
+        RunPodClient runPodClient = mock(RunPodClient.class);
+        JobClaimService claimService = mock(JobClaimService.class);
+        Channel channel = mock(Channel.class);
+
+        UUID correlationId = UUID.randomUUID();
+        TelegramChatEntity chat = new TelegramChatEntity(1L, "Tester", "tester", "private", false);
+        AnalysisJobEntity job = new AnalysisJobEntity(chat, Instant.now(), correlationId);
+        job.setJobStatus(JobStatus.ANALYSIS_REQUESTED);
+
+        when(jobRepository.findByCorrelationId(correlationId)).thenReturn(Optional.of(job));
+        when(claimService.claim(job)).thenReturn(true);
+
+        long deliveryTag = 42L;
+        String runpodJobId = "sync-9f2b1c-e1";
+
+        when(runPodClient.sendEvent(any(), any(), eq(channel), eq(deliveryTag)))
+                .thenReturn(new KatagoErrorMessage(runpodJobId, "IN_QUEUE", null));
+
+        AnalysisListener listener = new AnalysisListener(
+                "http://runpod.invalid/analyse", jobRepository, notificationService, runPodClient, claimService);
+
+        AnalysisCreatedEvent event = new AnalysisCreatedEvent(new AnalysisDTO(correlationId, 1L), null);
+
+        listener.listen(event, channel, deliveryTag);
+
+        // RunPod's own job id (needed for /cancel later) is NOT the same string as our correlationId.
+        assertEquals(runpodJobId, job.getRunpodJobId());
+        assertEquals(JobStatus.IN_QUEUE, job.getJobStatus());
     }
 }
