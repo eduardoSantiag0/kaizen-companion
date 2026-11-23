@@ -192,7 +192,7 @@ docker compose -f compose.prod.yaml up -d --build
   external/managed Postgres instead of the bundled container, that instance
   needs the same setting and a user with the `REPLICATION` privilege.
 - **RunPod**: `KATAGO_POST_URL_SYNC` is the deployed RunPod Serverless
-  endpoint's run URL (e.g. `https://api.runpod.ai/v2/<ENDPOINT_ID>/runsync`);
+  endpoint's run URL (e.g. `https://api.runpod.ai/v2/<ENDPOINT_ID>/run`);
   `RUNPOD_API_KEY` authenticates the outbound call to RunPod.
   `RUNPOD_HEADER_SECRET` authenticates the inbound callback and **must be the
   exact same value** configured as an environment variable on the RunPod
