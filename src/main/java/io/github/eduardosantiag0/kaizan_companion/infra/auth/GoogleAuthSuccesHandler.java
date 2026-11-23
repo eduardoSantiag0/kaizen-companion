@@ -80,9 +80,13 @@ public class GoogleAuthSuccesHandler implements AuthenticationSuccessHandler {
 
             Instant expiresAt = authorizedClient.getAccessToken().getExpiresAt();
 
-            OAuthConnectionEntity authConnectionEntity = new OAuthConnectionEntity(
-                    chatEntity, provider, providerId, expiresAt
-            );
+
+            OAuthConnectionEntity authConnectionEntity = oAuthConnectionRepository.findByChat(chatEntity)
+                    .orElseGet(() -> new OAuthConnectionEntity(chatEntity, provider, providerId, expiresAt));
+
+            authConnectionEntity.setProvider(provider);
+            authConnectionEntity.setProviderId(providerId);
+            authConnectionEntity.setExpiresAt(expiresAt);
 
             String accessTokenValue = authorizedClient.getAccessToken().getTokenValue();
 

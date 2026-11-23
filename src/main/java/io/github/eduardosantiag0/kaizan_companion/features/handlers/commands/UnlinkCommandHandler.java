@@ -4,6 +4,7 @@ import io.github.eduardosantiag0.kaizan_companion.domain.entities.TelegramChatEn
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.UserInfoEntity;
 import io.github.eduardosantiag0.kaizan_companion.exceptions.telegram.CommandMisuseException;
 import io.github.eduardosantiag0.kaizan_companion.domain.models.ECommands;
+import io.github.eduardosantiag0.kaizan_companion.domain.repositories.OAuthConnectionRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.UserInfoRepository;
 import io.github.eduardosantiag0.kaizan_companion.features.handlers.ICommandHandler;
@@ -21,11 +22,14 @@ public class UnlinkCommandHandler implements ICommandHandler {
 
     private final TelegramChatRepository telegramChatRepository;
     private final UserInfoRepository userInfoRepository;
+    private final OAuthConnectionRepository oAuthConnectionRepository;
     private final NotificationService notificationService;
 
-    public UnlinkCommandHandler(TelegramChatRepository telegramChatRepository, UserInfoRepository userInfoRepository, NotificationService notificationService) {
+    public UnlinkCommandHandler(TelegramChatRepository telegramChatRepository, UserInfoRepository userInfoRepository,
+                                 OAuthConnectionRepository oAuthConnectionRepository, NotificationService notificationService) {
         this.telegramChatRepository = telegramChatRepository;
         this.userInfoRepository = userInfoRepository;
+        this.oAuthConnectionRepository = oAuthConnectionRepository;
         this.notificationService = notificationService;
     }
 
@@ -73,13 +77,15 @@ public class UnlinkCommandHandler implements ICommandHandler {
                 userInfoRepository.save(userInfo);
             }
             case "drive" -> {
+                oAuthConnectionRepository.findByChat(chatEntity)
+                        .ifPresent(oAuthConnectionRepository::delete);
                 chatEntity.setDriveFolderId(null);
                 chatEntity.setDriveLinked(false);
                 telegramChatRepository.save(chatEntity);
             }
             default -> {
                 notificationService.sendErrorMessage(new ReplyWithText(
-                        chatId, "Unknown target '" + target + "'. Use /unlink email or /unlink ogs"
+                        chatId, "Unknown target '" + target + "'. Use /unlink email, /unlink ogs, or /unlink drive"
                 ));
                 return;
             }

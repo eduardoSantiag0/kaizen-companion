@@ -19,7 +19,7 @@ public class CommandMisuseException extends RuntimeException {
             case ADD_EMAIL -> "Usage: /add_email <email>";
             case RESIGN -> "Usage: /resign";
             case MY_PROFILE -> "Usage: /my_profile";
-            case UNLINK -> "Usage: /unlink email|ogs";
+            case UNLINK -> "Usage: /unlink email|ogs|drive";
             case QUEUE -> "Usage: /queue";
             case RANDOM -> "Usage: /random";
             case ADD_GOOGLE_DRIVE -> "Usage: /add_google_drive";

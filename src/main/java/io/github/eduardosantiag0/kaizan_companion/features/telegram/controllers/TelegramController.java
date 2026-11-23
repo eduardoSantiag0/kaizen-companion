@@ -41,7 +41,7 @@ public class TelegramController {
             new BotCommand(ADD_EMAIL.getCommand().substring(1), "Link an email to receive your analysed games"),
             new BotCommand(ADD_GOOGLE_DRIVE.getCommand().substring(1), "Connect your Google Drive to store analysed games"),
             new BotCommand(MY_PROFILE.getCommand().substring(1), "Show your linked accounts and email"),
-            new BotCommand(UNLINK.getCommand().substring(1), "Unlink your email or OGS account"),
+            new BotCommand(UNLINK.getCommand().substring(1), "Unlink your email, OGS account, or Google Drive"),
             new BotCommand(QUEUE.getCommand().substring(1), "Show your pending analysis jobs"),
             new BotCommand(RANDOM.getCommand().substring(1), "Analyse a random OGS game"),
             new BotCommand(RESIGN.getCommand().substring(1), "Cancel a running analysis job")

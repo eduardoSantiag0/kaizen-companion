@@ -87,7 +87,7 @@ public class MessageFormatter {
 
             /add_email — Receive reviews by email
             /add_google_drive — Save to Google Drive
-            /unlink — Remove a connection
+            /unlink email|ogs|drive — Remove a connection
 
             ━━━━━━━━━━━━━━━━━━━━━
 
