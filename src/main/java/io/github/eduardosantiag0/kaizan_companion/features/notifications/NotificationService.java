@@ -77,6 +77,7 @@ public class NotificationService {
         SendMessage request = SendMessage.builder()
                 .chatId(chatId)
                 .text(text)
+                .disableWebPagePreview(true)
                 .build();
 
         try {
