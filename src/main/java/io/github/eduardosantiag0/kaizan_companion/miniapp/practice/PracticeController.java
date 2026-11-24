@@ -71,6 +71,35 @@ public class PracticeController {
         return ResponseEntity.noContent().build();
     }
 
+    @PutMapping("today/exercises/{exerciseId}/progress")
+    public ResponseEntity<Void> saveProgress(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID exerciseId,
+            @RequestBody ProgressDto progress
+    ) {
+        if (authorization == null || !authorization.startsWith("tma ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        String initData = authorization.substring(4);
+        Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
+
+        service.saveProgress(telegramUserId, exerciseId, progress);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("streak")
+    public ResponseEntity<StreakDto> getStreak(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        if (authorization == null || !authorization.startsWith("tma ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        String initData = authorization.substring(4);
+        Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
+
+        return ResponseEntity.ok(service.getStreak(telegramUserId));
+    }
+
     @GetMapping("preferences")
     public ResponseEntity<PreferencesDto> getPreferences(
             @RequestHeader(value = "Authorization", required = false) String authorization

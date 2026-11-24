@@ -34,12 +34,32 @@ public class PracticeExerciseEntity {
     @Column(name = "completed", nullable = false)
     private boolean completed;
 
-    public PracticeExerciseEntity(SessionEntity session, GameAnalysisEntity game, String phase, int positionOrder) {
+    @Column(name = "top_variants", nullable = false)
+    private int topVariants;
+
+    @Setter
+    @Column(name = "current_depth", nullable = false)
+    private int currentDepth;
+
+    @Setter
+    @Column(name = "selected_variant")
+    private Integer selectedVariant;
+
+    @Setter
+    @Column(name = "step", nullable = false)
+    private int step;
+
+    public PracticeExerciseEntity(SessionEntity session, GameAnalysisEntity game, String phase, int positionOrder,
+                                   int topVariants, int currentDepth) {
         this.session = session;
         this.game = game;
         this.phase = phase;
         this.positionOrder = positionOrder;
         this.completed = false;
+        this.topVariants = topVariants;
+        this.currentDepth = currentDepth;
+        this.selectedVariant = null;
+        this.step = 1;
     }
 
     public PracticeExerciseEntity() {

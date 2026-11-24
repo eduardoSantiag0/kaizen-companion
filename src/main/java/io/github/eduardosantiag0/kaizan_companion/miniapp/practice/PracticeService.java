@@ -19,7 +19,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -62,7 +64,7 @@ public class PracticeService {
 
         return sessionRepository.findByChatAndSessionDate(chat, today)
                 .map(this::toSessionDto)
-                .orElseGet(() -> toSessionDto(createTodaySession(chat, today)));
+                .orElseGet(() -> toSessionDto(createTodaySession(chat, today, resolvePreferences(telegramUserId))));
     }
 
     @Transactional
@@ -87,6 +89,59 @@ public class PracticeService {
 
     public PreferencesDto getPreferences(Long telegramUserId) {
         requireChat(telegramUserId);
+        return resolvePreferences(telegramUserId);
+    }
+
+    @Transactional
+    public void saveProgress(Long telegramUserId, UUID exerciseId, ProgressDto progress) {
+        TelegramChatEntity chat = requireChat(telegramUserId);
+        PracticeExerciseEntity exercise = practiceExerciseRepository.findByIdAndSession_Chat(exerciseId, chat)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Exercise not found"));
+
+        exercise.setSelectedVariant(progress.selectedVariant());
+        exercise.setStep(progress.step());
+        exercise.setCurrentDepth(progress.currentDepth());
+        practiceExerciseRepository.save(exercise);
+    }
+
+
+    public StreakDto getStreak(Long telegramUserId) {
+        TelegramChatEntity chat = requireChat(telegramUserId);
+        Map<LocalDate, SessionEntity> byDate = new LinkedHashMap<>();
+        for (SessionEntity session : sessionRepository.findByChat(chat)) {
+            byDate.put(session.getSessionDate(), session);
+        }
+
+        LocalDate today = LocalDate.now();
+        int streak = 0;
+        LocalDate cursor = today;
+        while (true) {
+            SessionEntity session = byDate.get(cursor);
+            if (session == null) break;
+            if (!hasExercises(session)) {
+                cursor = cursor.minusDays(1);
+                continue;
+            }
+            if (!session.isCompleted()) break;
+            streak++;
+            cursor = cursor.minusDays(1);
+        }
+
+        List<Boolean> last7Days = new ArrayList<>();
+        for (int i = 6; i >= 0; i--) {
+            LocalDate date = today.minusDays(i);
+            SessionEntity session = byDate.get(date);
+            last7Days.add(session != null && session.isCompleted() && hasExercises(session));
+        }
+
+        return new StreakDto(streak, last7Days);
+    }
+
+    private boolean hasExercises(SessionEntity session) {
+        return !practiceExerciseRepository.findBySessionOrderByPositionOrder(session).isEmpty();
+    }
+
+    private PreferencesDto resolvePreferences(Long telegramUserId) {
         return practicePreferencesRepository.findById(telegramUserId)
                 .map(p -> new PreferencesDto(p.getTopVariants(), p.getContinuationDepth()))
                 .orElse(new PreferencesDto(DEFAULT_TOP_VARIANTS, DEFAULT_CONTINUATION_DEPTH));
@@ -119,7 +174,7 @@ public class PracticeService {
     }
 
 
-    private SessionEntity createTodaySession(TelegramChatEntity chat, LocalDate today) {
+    private SessionEntity createTodaySession(TelegramChatEntity chat, LocalDate today, PreferencesDto preferences) {
         Set<String> usedKeys = new HashSet<>();
         for (PracticeExerciseEntity exercise : practiceExerciseRepository.findBySession_Chat(chat)) {
             usedKeys.add(usageKey(exercise.getGame().getId(), exercise.getPhase()));
@@ -152,7 +207,8 @@ public class PracticeService {
                 continue;
             }
             practiceExerciseRepository.save(
-                    new PracticeExerciseEntity(session, candidate.game(), candidate.phase(), positionOrder));
+                    new PracticeExerciseEntity(session, candidate.game(), candidate.phase(), positionOrder,
+                            preferences.topVariants(), preferences.continuationDepth()));
             positionOrder++;
         }
 
@@ -198,7 +254,8 @@ public class PracticeService {
 
         return new ExerciseDto(
                 exercise.getId(), game.getId(), exercise.getPhase(), exercise.isCompleted(),
-                info.opponentName(), info.opponentRank(), info.boardSize(), info.userSign(), info.moveNumber()
+                info.opponentName(), info.opponentRank(), info.boardSize(), info.userSign(), info.moveNumber(),
+                exercise.getTopVariants(), exercise.getCurrentDepth(), exercise.getSelectedVariant(), exercise.getStep()
         );
     }
 

@@ -11,6 +11,10 @@ public record ExerciseDto(
         String opponentRank,
         int boardSize,
         int userSign,
-        int moveNumber
+        int moveNumber,
+        int topVariants,
+        int currentDepth,
+        Integer selectedVariant,
+        int step
 ) {
 }
