@@ -28,7 +28,7 @@ import java.util.Set;
 public class KatagoAssembler {
 
     private static final int BEST_CANDIDATES_LIMIT = 5;
-    private static final int VARIATION_MOVES_LIMIT = 6;
+    private static final int VARIATION_MOVES_LIMIT = 11;
 
     private static final SgfParser sgfParser = new SgfParser();
 

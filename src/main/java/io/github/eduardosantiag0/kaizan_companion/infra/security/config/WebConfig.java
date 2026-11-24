@@ -34,6 +34,26 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(miniAppOrigin)
                 .allowedMethods("DELETE")
                 .allowedHeaders("Authorization");
+
+        registry.addMapping("/kaizan/api/v1/practice/today")
+                .allowedOrigins(miniAppOrigin)
+                .allowedMethods("GET")
+                .allowedHeaders("Authorization");
+
+        registry.addMapping("/kaizan/api/v1/practice/today/start")
+                .allowedOrigins(miniAppOrigin)
+                .allowedMethods("POST")
+                .allowedHeaders("Authorization");
+
+        registry.addMapping("/kaizan/api/v1/practice/today/exercises/*/result")
+                .allowedOrigins(miniAppOrigin)
+                .allowedMethods("POST")
+                .allowedHeaders("Authorization");
+
+        registry.addMapping("/kaizan/api/v1/practice/preferences")
+                .allowedOrigins(miniAppOrigin)
+                .allowedMethods("GET", "PUT")
+                .allowedHeaders("Authorization", "Content-Type");
     }
 
 }

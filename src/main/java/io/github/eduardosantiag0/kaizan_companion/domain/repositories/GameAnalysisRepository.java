@@ -17,6 +17,8 @@ public interface GameAnalysisRepository extends JpaRepository<GameAnalysisEntity
 
     Optional<GameAnalysisEntity> findByIdAndChat(UUID id, TelegramChatEntity chat);
 
+    List<GameAnalysisEntity> findByChat(TelegramChatEntity chat);
+
     @Query("""
         SELECT new io.github.eduardosantiag0.kaizan_companion.miniapp.GameHistoryDto(
             g.id, g.jobEntity.correlationId, g.openingAnalysed, g.middlegameAnalysed, g.endgameAnalysed,
