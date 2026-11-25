@@ -373,6 +373,41 @@ class PracticeServiceTest {
     }
 
     @Test
+    void getStreak_whenTodaysPracticeIsntFinishedYet_stillCountsThroughYesterday() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+
+        LocalDate today = LocalDate.now();
+        SessionEntity yesterdaySession = completedSessionWithOneExercise(chat, today.minusDays(1));
+        SessionEntity todaySession = new SessionEntity(chat, today, "daily"); // started, not finished
+        GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
+        PracticeExerciseEntity pendingExercise = new PracticeExerciseEntity(todaySession, game, "opening", 1, 3, 4);
+        when(exerciseRepository.findBySessionOrderByPositionOrder(todaySession)).thenReturn(List.of(pendingExercise));
+        when(sessionRepository.findByChatAndKind(chat, "daily")).thenReturn(List.of(yesterdaySession, todaySession));
+
+        StreakDto streak = service.getStreak(1L);
+
+        // Handoff v5-1 section 3: "Until today's practice is finished, it counts through
+        // yesterday" — today being in progress must not zero out a streak already earned.
+        assertEquals(1, streak.currentStreak());
+        assertFalse(streak.last7Days().get(6)); // today itself still reads as not finished
+    }
+
+    @Test
+    void getStreak_whenTodayHasNoSessionAtAll_stillCountsThroughYesterday() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+
+        LocalDate today = LocalDate.now();
+        SessionEntity yesterdaySession = completedSessionWithOneExercise(chat, today.minusDays(1));
+        when(sessionRepository.findByChatAndKind(chat, "daily")).thenReturn(List.of(yesterdaySession));
+
+        StreakDto streak = service.getStreak(1L);
+
+        assertEquals(1, streak.currentStreak());
+    }
+
+    @Test
     void startNewRound_neverTouchesTheDailySessionOrTheStreak_alwaysCreatesANewGeneratedSession() {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
