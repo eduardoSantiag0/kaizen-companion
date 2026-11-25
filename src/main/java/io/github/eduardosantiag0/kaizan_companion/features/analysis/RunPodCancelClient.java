@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -39,6 +40,9 @@ public class RunPodCancelClient {
             );
 
             return response == null ? null : response.status();
+        } catch (HttpClientErrorException.NotFound e) {
+            log.info("Job {} não encontrado no RunPod/status-api ao cancelar — já concluído ou inexistente", correlationId);
+            return JobStatus.CANCELLED;
         } catch (RestClientException e) {
             log.warn("Falha ao cancelar job {} no RunPod/status-api: {}", correlationId, e.getMessage());
             return null;

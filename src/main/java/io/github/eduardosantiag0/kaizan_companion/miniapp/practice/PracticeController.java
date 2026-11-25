@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -54,6 +55,48 @@ public class PracticeController {
         Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
 
         return ResponseEntity.ok(service.startTodaySession(telegramUserId));
+    }
+
+    @PostMapping("today/new-round")
+    public ResponseEntity<SessionDto> startNewRound(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        if (authorization == null || !authorization.startsWith("tma ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        String initData = authorization.substring(4);
+        Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
+
+        return ResponseEntity.ok(service.startNewRound(telegramUserId));
+    }
+
+    @GetMapping("sessions")
+    public ResponseEntity<List<SessionDto>> listSessions(
+            @RequestHeader(value = "Authorization", required = false) String authorization
+    ) {
+        if (authorization == null || !authorization.startsWith("tma ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        String initData = authorization.substring(4);
+        Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
+
+        return ResponseEntity.ok(service.listSessions(telegramUserId));
+    }
+
+    @GetMapping("sessions/{sessionId}")
+    public ResponseEntity<SessionDto> getSession(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID sessionId
+    ) {
+        if (authorization == null || !authorization.startsWith("tma ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        String initData = authorization.substring(4);
+        Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
+
+        return service.getSession(telegramUserId, sessionId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PostMapping("today/exercises/{exerciseId}/result")

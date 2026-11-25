@@ -10,7 +10,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface SessionRepository extends JpaRepository<SessionEntity, UUID> {
-    Optional<SessionEntity> findByChatAndSessionDate(TelegramChatEntity chat, LocalDate sessionDate);
+    Optional<SessionEntity> findByChatAndSessionDateAndKind(TelegramChatEntity chat, LocalDate sessionDate, String kind);
 
     List<SessionEntity> findByChat(TelegramChatEntity chat);
+
+    List<SessionEntity> findByChatAndKind(TelegramChatEntity chat, String kind);
+
+    Optional<SessionEntity> findByIdAndChat(UUID id, TelegramChatEntity chat);
 }

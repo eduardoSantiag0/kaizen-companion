@@ -54,7 +54,7 @@ public class PracticeService {
 
     public Optional<SessionDto> getTodaySession(Long telegramUserId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
-        return sessionRepository.findByChatAndSessionDate(chat, LocalDate.now()).map(this::toSessionDto);
+        return sessionRepository.findByChatAndSessionDateAndKind(chat, LocalDate.now(), "daily").map(this::toSessionDto);
     }
 
     @Transactional
@@ -62,9 +62,28 @@ public class PracticeService {
         TelegramChatEntity chat = requireChat(telegramUserId);
         LocalDate today = LocalDate.now();
 
-        return sessionRepository.findByChatAndSessionDate(chat, today)
+        return sessionRepository.findByChatAndSessionDateAndKind(chat, today, "daily")
                 .map(this::toSessionDto)
-                .orElseGet(() -> toSessionDto(createTodaySession(chat, today, resolvePreferences(telegramUserId))));
+                .orElseGet(() -> toSessionDto(createSession(chat, today, "daily", resolvePreferences(telegramUserId))));
+    }
+
+
+    @Transactional
+    public SessionDto startNewRound(Long telegramUserId) {
+        TelegramChatEntity chat = requireChat(telegramUserId);
+        return toSessionDto(createSession(chat, LocalDate.now(), "generated", resolvePreferences(telegramUserId)));
+    }
+
+    public List<SessionDto> listSessions(Long telegramUserId) {
+        TelegramChatEntity chat = requireChat(telegramUserId);
+        List<SessionEntity> sessions = new ArrayList<>(sessionRepository.findByChat(chat));
+        sessions.sort((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()));
+        return sessions.stream().map(this::toSessionDto).toList();
+    }
+
+    public Optional<SessionDto> getSession(Long telegramUserId, UUID sessionId) {
+        TelegramChatEntity chat = requireChat(telegramUserId);
+        return sessionRepository.findByIdAndChat(sessionId, chat).map(this::toSessionDto);
     }
 
     @Transactional
@@ -108,7 +127,7 @@ public class PracticeService {
     public StreakDto getStreak(Long telegramUserId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
         Map<LocalDate, SessionEntity> byDate = new LinkedHashMap<>();
-        for (SessionEntity session : sessionRepository.findByChat(chat)) {
+        for (SessionEntity session : sessionRepository.findByChatAndKind(chat, "daily")) {
             byDate.put(session.getSessionDate(), session);
         }
 
@@ -174,7 +193,7 @@ public class PracticeService {
     }
 
 
-    private SessionEntity createTodaySession(TelegramChatEntity chat, LocalDate today, PreferencesDto preferences) {
+    private SessionEntity createSession(TelegramChatEntity chat, LocalDate date, String kind, PreferencesDto preferences) {
         Set<String> usedKeys = new HashSet<>();
         for (PracticeExerciseEntity exercise : practiceExerciseRepository.findBySession_Chat(chat)) {
             usedKeys.add(usageKey(exercise.getGame().getId(), exercise.getPhase()));
@@ -196,7 +215,7 @@ public class PracticeService {
         List<Candidate> ordered = new ArrayList<>(unused);
         ordered.addAll(used);
 
-        SessionEntity session = sessionRepository.save(new SessionEntity(chat, today));
+        SessionEntity session = sessionRepository.save(new SessionEntity(chat, date, kind));
 
         int positionOrder = 1;
         for (Candidate candidate : ordered) {
@@ -243,7 +262,7 @@ public class PracticeService {
                 .stream()
                 .map(this::toExerciseDto)
                 .toList();
-        return new SessionDto(session.getSessionDate().toString(), session.isCompleted(), exercises);
+        return new SessionDto(session.getId(), session.getKind(), session.getSessionDate().toString(), session.isCompleted(), exercises);
     }
 
     private ExerciseDto toExerciseDto(PracticeExerciseEntity exercise) {
