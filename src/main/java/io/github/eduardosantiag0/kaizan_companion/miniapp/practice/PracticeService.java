@@ -132,8 +132,12 @@ public class PracticeService {
         }
 
         LocalDate today = LocalDate.now();
+
+        SessionEntity todaySession = byDate.get(today);
+        boolean todayCounts = todaySession != null && hasExercises(todaySession) && todaySession.isCompleted();
+
         int streak = 0;
-        LocalDate cursor = today;
+        LocalDate cursor = todayCounts ? today : today.minusDays(1);
         while (true) {
             SessionEntity session = byDate.get(cursor);
             if (session == null) break;

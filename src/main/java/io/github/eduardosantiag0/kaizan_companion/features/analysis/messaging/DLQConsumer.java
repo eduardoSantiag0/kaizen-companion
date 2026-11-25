@@ -23,7 +23,7 @@ public class DLQConsumer {
         };
     }
 
-    @RabbitListener(queues = "${rabbitmq.queue.analysis.dlq}")
+    @RabbitListener(queues = "${rabbitmq.queue.analysis.dlq}", ackMode = "AUTO")
     public void consumeDL(AnalysisCreatedEvent payload, MessageHeaders headers) {
 
         log.debug("Headers: " + headers);
