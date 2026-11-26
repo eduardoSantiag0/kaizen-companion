@@ -221,6 +221,32 @@ class PracticeServiceTest {
     }
 
     @Test
+    void startTodaySession_usesTheSavedExerciseCountPreference_insteadOfAFixedFive() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.findByChatAndSessionDateAndKind(eq(chat), any(), eq("daily"))).thenReturn(Optional.empty());
+        when(sessionRepository.save(any(SessionEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(preferencesRepository.findById(1L)).thenReturn(Optional.of(new PracticePreferencesEntity(1L, 3, 4, 2, "own")));
+
+        GameAnalysisEntity game = gameWithPhases(chat,
+                "opening", BRANCHING_SGF, "middlegame", BRANCHING_SGF, "endgame", BRANCHING_SGF);
+        when(gameRepository.findByChat(chat)).thenReturn(List.of(game));
+        when(exerciseRepository.findBySession_Chat(chat)).thenReturn(List.of());
+
+        List<PracticeExerciseEntity> saved = new ArrayList<>();
+        when(exerciseRepository.save(any(PracticeExerciseEntity.class))).thenAnswer(inv -> {
+            PracticeExerciseEntity e = inv.getArgument(0);
+            saved.add(e);
+            return e;
+        });
+        when(exerciseRepository.findBySessionOrderByPositionOrder(any(SessionEntity.class))).thenAnswer(inv -> saved);
+
+        service.startTodaySession(1L);
+
+        assertEquals(2, saved.size()); // capped at the saved preference, not the 3 branchable candidates available
+    }
+
+    @Test
     void recordResult_onExerciseNotOwnedByChat_throwsNotFound() {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
@@ -282,26 +308,42 @@ class PracticeServiceTest {
     @Test
     void getPreferences_withSavedPreferences_returnsThem() {
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat()));
-        when(preferencesRepository.findById(1L)).thenReturn(Optional.of(new PracticePreferencesEntity(1L, 5, 10)));
+        when(preferencesRepository.findById(1L)).thenReturn(Optional.of(new PracticePreferencesEntity(1L, 5, 10, 7, "mixed")));
 
         PreferencesDto preferences = service.getPreferences(1L);
 
         assertEquals(5, preferences.topVariants());
         assertEquals(10, preferences.continuationDepth());
+        assertEquals(7, preferences.exerciseCount());
+        assertEquals("mixed", preferences.exerciseSource());
     }
 
     @Test
     void setPreferences_onOutOfRangeTopVariants_throwsBadRequest() {
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat()));
 
-        assertThrows(ResponseStatusException.class, () -> service.setPreferences(1L, new PreferencesDto(6, 4)));
+        assertThrows(ResponseStatusException.class, () -> service.setPreferences(1L, new PreferencesDto(6, 4, 5, "own")));
     }
 
     @Test
     void setPreferences_onOutOfRangeContinuationDepth_throwsBadRequest() {
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat()));
 
-        assertThrows(ResponseStatusException.class, () -> service.setPreferences(1L, new PreferencesDto(3, 11)));
+        assertThrows(ResponseStatusException.class, () -> service.setPreferences(1L, new PreferencesDto(3, 11, 5, "own")));
+    }
+
+    @Test
+    void setPreferences_onOutOfRangeExerciseCount_throwsBadRequest() {
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat()));
+
+        assertThrows(ResponseStatusException.class, () -> service.setPreferences(1L, new PreferencesDto(3, 4, 11, "own")));
+    }
+
+    @Test
+    void setPreferences_onInvalidExerciseSource_throwsBadRequest() {
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat()));
+
+        assertThrows(ResponseStatusException.class, () -> service.setPreferences(1L, new PreferencesDto(3, 4, 5, "someone_else")));
     }
 
     @Test
@@ -309,9 +351,11 @@ class PracticeServiceTest {
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat()));
         when(preferencesRepository.findById(1L)).thenReturn(Optional.empty());
 
-        service.setPreferences(1L, new PreferencesDto(2, 8));
+        service.setPreferences(1L, new PreferencesDto(2, 8, 7, "mixed"));
 
-        verify(preferencesRepository).save(argThat(p -> p.getTopVariants() == 2 && p.getContinuationDepth() == 8));
+        verify(preferencesRepository).save(argThat(p ->
+                p.getTopVariants() == 2 && p.getContinuationDepth() == 8
+                        && p.getExerciseCount() == 7 && p.getExerciseSource().equals("mixed")));
     }
 
     @Test
@@ -482,6 +526,30 @@ class PracticeServiceTest {
         when(sessionRepository.findByIdAndChat(sessionId, chat())).thenReturn(Optional.empty());
 
         assertTrue(service.getSession(1L, sessionId).isEmpty());
+    }
+
+    /** Regression: one exercise whose SGF no longer parses (e.g. the underlying game analysis
+     * was edited/cleared after this exercise was persisted) used to make toSessionDto throw,
+     * taking the WHOLE session down — every endpoint returning a SessionDto would 500 for this
+     * chat. It must instead just drop that one exercise and return the rest. */
+    @Test
+    void getSession_dropsAnExerciseWithUnreadableSgf_insteadOfFailingTheWholeSession() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        UUID sessionId = UUID.randomUUID();
+        SessionEntity session = new SessionEntity(chat, LocalDate.now(), "daily");
+        when(sessionRepository.findByIdAndChat(sessionId, chat)).thenReturn(Optional.of(session));
+
+        GameAnalysisEntity healthyGame = gameWithPhases(chat, "opening", BRANCHING_SGF);
+        PracticeExerciseEntity healthy = new PracticeExerciseEntity(session, healthyGame, "opening", 1, 3, 4);
+        GameAnalysisEntity brokenGame = gameWithPhases(chat, "opening", NO_BRANCH_SGF);
+        PracticeExerciseEntity broken = new PracticeExerciseEntity(session, brokenGame, "opening", 2, 3, 4);
+        when(exerciseRepository.findBySessionOrderByPositionOrder(session)).thenReturn(List.of(healthy, broken));
+
+        SessionDto dto = service.getSession(1L, sessionId).orElseThrow();
+
+        assertEquals(1, dto.exercises().size());
+        assertEquals(healthy.getId(), dto.exercises().get(0).id());
     }
 
     private SessionEntity completedSessionWithOneExercise(TelegramChatEntity chat, LocalDate date) {

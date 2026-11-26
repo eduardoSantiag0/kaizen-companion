@@ -2,6 +2,8 @@ package io.github.eduardosantiag0.kaizan_companion.miniapp.practice;
 
 public record PreferencesDto(
         int topVariants,
-        int continuationDepth
+        int continuationDepth,
+        int exerciseCount,
+        String exerciseSource
 ) {
 }

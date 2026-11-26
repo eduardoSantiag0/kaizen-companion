@@ -10,6 +10,7 @@ import io.github.eduardosantiag0.kaizan_companion.domain.repositories.PracticeEx
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.PracticePreferencesRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.SessionRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,13 +26,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @Service
+@Slf4j
 public class PracticeService {
 
-    private static final int MAX_EXERCISES_PER_SESSION = 5;
     private static final int DEFAULT_TOP_VARIANTS = 3;
     private static final int DEFAULT_CONTINUATION_DEPTH = 4;
+    private static final int DEFAULT_EXERCISE_COUNT = 5;
+    private static final String DEFAULT_EXERCISE_SOURCE = "own";
+    private static final String EXERCISE_SOURCE_MIXED = "mixed";
 
     private final TelegramChatRepository telegramChatRepository;
     private final SessionRepository sessionRepository;
@@ -171,8 +176,8 @@ public class PracticeService {
 
     private PreferencesDto resolvePreferences(Long telegramUserId) {
         return practicePreferencesRepository.findById(telegramUserId)
-                .map(p -> new PreferencesDto(p.getTopVariants(), p.getContinuationDepth()))
-                .orElse(new PreferencesDto(DEFAULT_TOP_VARIANTS, DEFAULT_CONTINUATION_DEPTH));
+                .map(p -> new PreferencesDto(p.getTopVariants(), p.getContinuationDepth(), p.getExerciseCount(), p.getExerciseSource()))
+                .orElse(new PreferencesDto(DEFAULT_TOP_VARIANTS, DEFAULT_CONTINUATION_DEPTH, DEFAULT_EXERCISE_COUNT, DEFAULT_EXERCISE_SOURCE));
     }
 
     @Transactional
@@ -181,9 +186,12 @@ public class PracticeService {
         validateRange(preferences);
 
         PracticePreferencesEntity entity = practicePreferencesRepository.findById(telegramUserId)
-                .orElseGet(() -> new PracticePreferencesEntity(telegramUserId, DEFAULT_TOP_VARIANTS, DEFAULT_CONTINUATION_DEPTH));
+                .orElseGet(() -> new PracticePreferencesEntity(
+                        telegramUserId, DEFAULT_TOP_VARIANTS, DEFAULT_CONTINUATION_DEPTH, DEFAULT_EXERCISE_COUNT, DEFAULT_EXERCISE_SOURCE));
         entity.setTopVariants(preferences.topVariants());
         entity.setContinuationDepth(preferences.continuationDepth());
+        entity.setExerciseCount(preferences.exerciseCount());
+        entity.setExerciseSource(preferences.exerciseSource());
         practicePreferencesRepository.save(entity);
     }
 
@@ -199,6 +207,12 @@ public class PracticeService {
         if (preferences.continuationDepth() < 2 || preferences.continuationDepth() > 10) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "continuationDepth must be between 2 and 10");
         }
+        if (preferences.exerciseCount() < 1 || preferences.exerciseCount() > 10) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "exerciseCount must be between 1 and 10");
+        }
+        if (!"own".equals(preferences.exerciseSource()) && !EXERCISE_SOURCE_MIXED.equals(preferences.exerciseSource())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "exerciseSource must be \"own\" or \"mixed\"");
+        }
     }
 
 
@@ -210,7 +224,14 @@ public class PracticeService {
 
     /** Fills an existing, exercise-less session from the chat's candidate pool — shared by
      * createSession (brand-new session) and startTodaySession's retry on an existing-but-empty
-     * one. No-op (leaves the session exactly as it was) if the pool has nothing usable. */
+     * one. No-op (leaves the session exactly as it was) if the pool has nothing usable.
+     * preferences.exerciseCount() caps how many exercises this fills in (was a hardcoded 5).
+     * preferences.exerciseSource() ("own" vs "mixed") is persisted and validated but NOT YET
+     * wired in here — every session is still built from this chat's own games only. There is
+     * no "community" pool of other chats' analyzed games on the backend at all right now, and
+     * building one means deciding whether/how one user's private game analyses get surfaced to
+     * another — a real product/privacy call this fix doesn't make unilaterally. Until that
+     * pool exists, "mixed" behaves exactly like "own". */
     private void populateExercises(SessionEntity session, TelegramChatEntity chat, PreferencesDto preferences) {
         Set<String> usedKeys = new HashSet<>();
         for (PracticeExerciseEntity exercise : practiceExerciseRepository.findBySession_Chat(chat)) {
@@ -234,11 +255,13 @@ public class PracticeService {
         ordered.addAll(used);
 
         int positionOrder = 1;
+        int rejectedUnreadable = 0;
         for (Candidate candidate : ordered) {
-            if (positionOrder > MAX_EXERCISES_PER_SESSION) {
+            if (positionOrder > preferences.exerciseCount()) {
                 break;
             }
             if (assembler.tryDisplayInfo(candidate.sgf()).isEmpty()) {
+                rejectedUnreadable++;
                 continue;
             }
             practiceExerciseRepository.save(
@@ -248,6 +271,8 @@ public class PracticeService {
         }
 
         if (positionOrder == 1) {
+            log.warn("populateExercises found nothing usable for session {} (chat {}): games={}, candidates={}, rejectedUnreadable={}",
+                    session.getId(), chat.getChatId(), gameAnalysisRepository.findByChat(chat).size(), ordered.size(), rejectedUnreadable);
             session.setCompleted(true);
             sessionRepository.save(session);
         }
@@ -274,7 +299,14 @@ public class PracticeService {
     private SessionDto toSessionDto(SessionEntity session) {
         List<ExerciseDto> exercises = practiceExerciseRepository.findBySessionOrderByPositionOrder(session)
                 .stream()
-                .map(this::toExerciseDto)
+                .flatMap(exercise -> {
+                    try {
+                        return Stream.of(toExerciseDto(exercise));
+                    } catch (IllegalStateException e) {
+                        log.error("Dropping unreadable exercise {} from session {}", exercise.getId(), session.getId(), e);
+                        return Stream.<ExerciseDto>empty();
+                    }
+                })
                 .toList();
         return new SessionDto(session.getId(), session.getKind(), session.getSessionDate().toString(), session.isCompleted(), exercises);
     }
