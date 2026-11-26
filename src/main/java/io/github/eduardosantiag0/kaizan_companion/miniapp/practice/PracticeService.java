@@ -62,9 +62,14 @@ public class PracticeService {
         TelegramChatEntity chat = requireChat(telegramUserId);
         LocalDate today = LocalDate.now();
 
-        return sessionRepository.findByChatAndSessionDateAndKind(chat, today, "daily")
-                .map(this::toSessionDto)
-                .orElseGet(() -> toSessionDto(createSession(chat, today, "daily", resolvePreferences(telegramUserId))));
+        SessionEntity session = sessionRepository.findByChatAndSessionDateAndKind(chat, today, "daily")
+                .orElseGet(() -> sessionRepository.save(new SessionEntity(chat, today, "daily")));
+
+        if (!hasExercises(session)) {
+            populateExercises(session, chat, resolvePreferences(telegramUserId));
+        }
+
+        return toSessionDto(session);
     }
 
 
@@ -198,6 +203,15 @@ public class PracticeService {
 
 
     private SessionEntity createSession(TelegramChatEntity chat, LocalDate date, String kind, PreferencesDto preferences) {
+        SessionEntity session = sessionRepository.save(new SessionEntity(chat, date, kind));
+        populateExercises(session, chat, preferences);
+        return session;
+    }
+
+    /** Fills an existing, exercise-less session from the chat's candidate pool — shared by
+     * createSession (brand-new session) and startTodaySession's retry on an existing-but-empty
+     * one. No-op (leaves the session exactly as it was) if the pool has nothing usable. */
+    private void populateExercises(SessionEntity session, TelegramChatEntity chat, PreferencesDto preferences) {
         Set<String> usedKeys = new HashSet<>();
         for (PracticeExerciseEntity exercise : practiceExerciseRepository.findBySession_Chat(chat)) {
             usedKeys.add(usageKey(exercise.getGame().getId(), exercise.getPhase()));
@@ -219,8 +233,6 @@ public class PracticeService {
         List<Candidate> ordered = new ArrayList<>(unused);
         ordered.addAll(used);
 
-        SessionEntity session = sessionRepository.save(new SessionEntity(chat, date, kind));
-
         int positionOrder = 1;
         for (Candidate candidate : ordered) {
             if (positionOrder > MAX_EXERCISES_PER_SESSION) {
@@ -237,10 +249,8 @@ public class PracticeService {
 
         if (positionOrder == 1) {
             session.setCompleted(true);
-            session = sessionRepository.save(session);
+            sessionRepository.save(session);
         }
-
-        return session;
     }
 
     private List<Candidate> candidatesOf(GameAnalysisEntity game) {

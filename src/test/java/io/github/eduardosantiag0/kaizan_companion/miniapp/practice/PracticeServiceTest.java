@@ -134,18 +134,50 @@ class PracticeServiceTest {
     }
 
     @Test
-    void startTodaySession_isIdempotent_whenASessionAlreadyExistsToday() {
+    void startTodaySession_isIdempotent_whenASessionAlreadyHasExercisesToday() {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
         SessionEntity existing = new SessionEntity(chat, LocalDate.now(), "daily");
+        GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
+        PracticeExerciseEntity exercise = new PracticeExerciseEntity(existing, game, "opening", 1, 3, 4);
         when(sessionRepository.findByChatAndSessionDateAndKind(eq(chat), any(), eq("daily"))).thenReturn(Optional.of(existing));
-        when(exerciseRepository.findBySessionOrderByPositionOrder(existing)).thenReturn(List.of());
+        when(exerciseRepository.findBySessionOrderByPositionOrder(existing)).thenReturn(List.of(exercise));
 
         service.startTodaySession(1L);
 
         verify(gameRepository, never()).findByChat(any());
         verify(sessionRepository, never()).save(any());
+    }
+
+    /** Regression: a session row that already exists for today but was saved with zero
+     * exercises (a transient pool issue at the time, or rows cleaned up by hand) must not stay
+     * stuck empty for the rest of the day — see populateExercises' doc comment. */
+    @Test
+    void startTodaySession_whenExistingSessionHasNoExercises_retriesPopulatingItInstead() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+
+        SessionEntity existing = new SessionEntity(chat, LocalDate.now(), "daily");
+        when(sessionRepository.findByChatAndSessionDateAndKind(eq(chat), any(), eq("daily"))).thenReturn(Optional.of(existing));
+
+        GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
+        when(gameRepository.findByChat(chat)).thenReturn(List.of(game));
+        when(exerciseRepository.findBySession_Chat(chat)).thenReturn(List.of());
+
+        List<PracticeExerciseEntity> saved = new ArrayList<>();
+        when(exerciseRepository.save(any(PracticeExerciseEntity.class))).thenAnswer(inv -> {
+            PracticeExerciseEntity e = inv.getArgument(0);
+            saved.add(e);
+            return e;
+        });
+        when(exerciseRepository.findBySessionOrderByPositionOrder(existing)).thenAnswer(inv -> saved);
+
+        SessionDto dto = service.startTodaySession(1L);
+
+        verify(gameRepository).findByChat(chat);
+        assertEquals(1, dto.exercises().size());
+        assertFalse(dto.completed());
     }
 
     @Test
