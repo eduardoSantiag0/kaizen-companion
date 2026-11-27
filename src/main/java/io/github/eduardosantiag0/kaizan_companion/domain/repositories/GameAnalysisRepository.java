@@ -32,4 +32,6 @@ public interface GameAnalysisRepository extends JpaRepository<GameAnalysisEntity
     List<GameHistoryDto> findHistoryByChat(@Param("chat") TelegramChatEntity chat);
 
     boolean existsByOrigin(ExerciseOrigin exerciseOrigin);
+
+    List<GameAnalysisEntity> findByOrigin(ExerciseOrigin exerciseOrigin);
 }

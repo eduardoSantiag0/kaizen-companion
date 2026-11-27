@@ -1,6 +1,7 @@
 package io.github.eduardosantiag0.kaizan_companion.miniapp.practice;
 
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.AnalysisJobEntity;
+import io.github.eduardosantiag0.kaizan_companion.domain.entities.ExerciseOrigin;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.GameAnalysisEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.PracticeExerciseEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.PracticePreferencesEntity;
@@ -11,6 +12,7 @@ import io.github.eduardosantiag0.kaizan_companion.domain.repositories.PracticeEx
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.PracticePreferencesRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.SessionRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
+import io.github.eduardosantiag0.kaizan_companion.infra.seed.DatasetGameDto;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -72,6 +74,21 @@ class PracticeServiceTest {
         return game;
     }
 
+    /** A shared public-pool entity (ExerciseOrigin.PUBLIC, no owning chat) — same shape
+     * SeedPublicDataset produces from dataset/games.json via GameAnalysisEntity.fromDataset. */
+    private static GameAnalysisEntity publicGameWithPhases(String... phaseSgfs) {
+        GameAnalysisEntity game = GameAnalysisEntity.fromDataset(new DatasetGameDto(null, null, null, null, null, null));
+        for (int i = 0; i + 1 < phaseSgfs.length; i += 2) {
+            switch (phaseSgfs[i]) {
+                case "opening" -> game.setOpeningAnalysed(phaseSgfs[i + 1]);
+                case "middlegame" -> game.setMiddlegameAnalysed(phaseSgfs[i + 1]);
+                case "endgame" -> game.setEndgameAnalysed(phaseSgfs[i + 1]);
+                default -> throw new IllegalArgumentException(phaseSgfs[i]);
+            }
+        }
+        return game;
+    }
+
     private static void setId(GameAnalysisEntity game, UUID id) {
         try {
             Field field = GameAnalysisEntity.class.getDeclaredField("id");
@@ -112,6 +129,8 @@ class PracticeServiceTest {
 
         assertEquals(1, dto.exercises().size());
         assertEquals("opening", dto.exercises().get(0).phase());
+        assertEquals("personal", dto.exercises().get(0).origin());
+        assertEquals(BRANCHING_SGF, dto.exercises().get(0).sgf());
         assertFalse(dto.completed());
     }
 
@@ -500,6 +519,107 @@ class PracticeServiceTest {
 
         assertEquals("generated", dto.kind());
         verify(sessionRepository, never()).findByChatAndSessionDateAndKind(any(), any(), any());
+    }
+
+    @Test
+    void startTodaySession_ownExerciseSource_neverReadsThePublicPool() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.findByChatAndSessionDateAndKind(eq(chat), any(), eq("daily"))).thenReturn(Optional.empty());
+        when(sessionRepository.save(any(SessionEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
+        when(gameRepository.findByChat(chat)).thenReturn(List.of(game));
+        when(exerciseRepository.findBySession_Chat(chat)).thenReturn(List.of());
+        when(exerciseRepository.save(any(PracticeExerciseEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(exerciseRepository.findBySessionOrderByPositionOrder(any(SessionEntity.class)))
+                .thenReturn(List.of(new PracticeExerciseEntity(null, game, "opening", 1, 3, 4)));
+
+        service.startTodaySession(1L);
+
+        verify(gameRepository, never()).findByOrigin(any());
+    }
+
+    @Test
+    void startTodaySession_mixedExerciseSource_padsOwnGamesWithThePublicPool() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.findByChatAndSessionDateAndKind(eq(chat), any(), eq("daily"))).thenReturn(Optional.empty());
+        when(sessionRepository.save(any(SessionEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(preferencesRepository.findById(1L)).thenReturn(Optional.of(new PracticePreferencesEntity(1L, 3, 4, 5, "mixed")));
+
+        GameAnalysisEntity ownGame = gameWithPhases(chat, "opening", BRANCHING_SGF);
+        GameAnalysisEntity publicGame = publicGameWithPhases("opening", BRANCHING_SGF);
+        when(gameRepository.findByChat(chat)).thenReturn(List.of(ownGame));
+        when(gameRepository.findByOrigin(ExerciseOrigin.PUBLIC)).thenReturn(List.of(publicGame));
+        when(exerciseRepository.findBySession_Chat(chat)).thenReturn(List.of());
+
+        List<PracticeExerciseEntity> saved = new ArrayList<>();
+        when(exerciseRepository.save(any(PracticeExerciseEntity.class))).thenAnswer(inv -> {
+            PracticeExerciseEntity e = inv.getArgument(0);
+            saved.add(e);
+            return e;
+        });
+        when(exerciseRepository.findBySessionOrderByPositionOrder(any(SessionEntity.class))).thenAnswer(inv -> saved);
+
+        SessionDto dto = service.startTodaySession(1L);
+
+        // Own games always come first — the public pool only fills out what's left.
+        assertEquals(2, dto.exercises().size());
+        assertEquals("personal", dto.exercises().get(0).origin());
+        assertEquals("dataset", dto.exercises().get(1).origin());
+    }
+
+    @Test
+    void startRandomPractice_buildsFromThePublicPoolAlone_ignoringTheChatsOwnGamesAndPreference() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.save(any(SessionEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(preferencesRepository.findById(1L)).thenReturn(Optional.of(new PracticePreferencesEntity(1L, 3, 4, 5, "own")));
+
+        GameAnalysisEntity publicGame = publicGameWithPhases("opening", BRANCHING_SGF);
+        when(gameRepository.findByOrigin(ExerciseOrigin.PUBLIC)).thenReturn(List.of(publicGame));
+        when(exerciseRepository.findBySession_Chat(chat)).thenReturn(List.of());
+        when(exerciseRepository.save(any(PracticeExerciseEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(exerciseRepository.findBySessionOrderByPositionOrder(any(SessionEntity.class)))
+                .thenReturn(List.of(new PracticeExerciseEntity(null, publicGame, "opening", 1, 3, 4)));
+
+        SessionDto dto = service.startRandomPractice(1L, 3);
+
+        assertEquals("generated", dto.kind());
+        assertEquals("dataset", dto.exercises().get(0).origin());
+        verify(gameRepository, never()).findByChat(any());
+    }
+
+    @Test
+    void startRandomPractice_capsAtTheRequestedCount_notTheExerciseCountPreference() {
+        TelegramChatEntity chat = chat();
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.save(any(SessionEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(preferencesRepository.findById(1L)).thenReturn(Optional.of(new PracticePreferencesEntity(1L, 3, 4, 2, "own")));
+
+        GameAnalysisEntity publicGame = publicGameWithPhases(
+                "opening", BRANCHING_SGF, "middlegame", BRANCHING_SGF, "endgame", BRANCHING_SGF);
+        when(gameRepository.findByOrigin(ExerciseOrigin.PUBLIC)).thenReturn(List.of(publicGame));
+        when(exerciseRepository.findBySession_Chat(chat)).thenReturn(List.of());
+
+        List<PracticeExerciseEntity> saved = new ArrayList<>();
+        when(exerciseRepository.save(any(PracticeExerciseEntity.class))).thenAnswer(inv -> {
+            PracticeExerciseEntity e = inv.getArgument(0);
+            saved.add(e);
+            return e;
+        });
+        when(exerciseRepository.findBySessionOrderByPositionOrder(any(SessionEntity.class))).thenAnswer(inv -> saved);
+
+        service.startRandomPractice(1L, 3);
+
+        assertEquals(3, saved.size()); // the dialog's own count (3), not the exerciseCount preference (2)
+    }
+
+    @Test
+    void startRandomPractice_onOutOfRangeCount_throwsBadRequest() {
+        assertThrows(ResponseStatusException.class, () -> service.startRandomPractice(1L, 0));
+        assertThrows(ResponseStatusException.class, () -> service.startRandomPractice(1L, 11));
     }
 
     @Test

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -68,6 +69,20 @@ public class PracticeController {
         Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
 
         return ResponseEntity.ok(service.startNewRound(telegramUserId));
+    }
+
+    @PostMapping("random")
+    public ResponseEntity<SessionDto> startRandomPractice(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam int count
+    ) {
+        if (authorization == null || !authorization.startsWith("tma ")) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        }
+        String initData = authorization.substring(4);
+        Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
+
+        return ResponseEntity.ok(service.startRandomPractice(telegramUserId, count));
     }
 
     @GetMapping("sessions")

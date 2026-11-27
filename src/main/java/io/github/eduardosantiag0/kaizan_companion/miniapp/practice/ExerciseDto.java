@@ -7,6 +7,8 @@ public record ExerciseDto(
         UUID gameId,
         String phase,
         boolean completed,
+        String origin,
+        String sgf,
         String opponentName,
         String opponentRank,
         int boardSize,

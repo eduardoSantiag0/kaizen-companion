@@ -1,5 +1,6 @@
 package io.github.eduardosantiag0.kaizan_companion.miniapp.practice;
 
+import io.github.eduardosantiag0.kaizan_companion.domain.entities.ExerciseOrigin;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.GameAnalysisEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.PracticeExerciseEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.PracticePreferencesEntity;
@@ -85,6 +86,22 @@ public class PracticeService {
     public SessionDto startNewRound(Long telegramUserId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
         return toSessionDto(createSession(chat, LocalDate.now(), "generated", resolvePreferences(telegramUserId)));
+    }
+
+
+    @Transactional
+    public SessionDto startRandomPractice(Long telegramUserId, int count) {
+        if (count < 1 || count > 10) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "count must be between 1 and 10");
+        }
+        TelegramChatEntity chat = requireChat(telegramUserId);
+        PreferencesDto preferences = resolvePreferences(telegramUserId);
+
+        SessionEntity session = sessionRepository.save(new SessionEntity(chat, LocalDate.now(), "generated"));
+        List<Candidate> ordered = orderedCandidates(gameAnalysisRepository.findByOrigin(ExerciseOrigin.PUBLIC), usedKeysFor(chat));
+        saveCandidates(session, ordered, count, preferences.topVariants(), preferences.continuationDepth());
+
+        return toSessionDto(session);
     }
 
     public List<SessionDto> listSessions(Long telegramUserId) {
@@ -229,22 +246,35 @@ public class PracticeService {
      * createSession (brand-new session) and startTodaySession's retry on an existing-but-empty
      * one. No-op (leaves the session exactly as it was) if the pool has nothing usable.
      * preferences.exerciseCount() caps how many exercises this fills in (was a hardcoded 5).
-     * preferences.exerciseSource() ("own" vs "mixed") is persisted and validated but NOT YET
-     * wired in here — every session is still built from this chat's own games only. There is
-     * no "community" pool of other chats' analyzed games on the backend at all right now, and
-     * building one means deciding whether/how one user's private game analyses get surfaced to
-     * another — a real product/privacy call this fix doesn't make unilaterally. Until that
-     * pool exists, "mixed" behaves exactly like "own". */
+     * preferences.exerciseSource(): "own" is just the chat's own games; "mixed" pads the same
+     * ordered own-games list with the shared public pool (ExerciseOrigin.PUBLIC, see
+     * GameAnalysisEntity.fromDataset) — own games always come first, the pool only fills out
+     * what's left, same convention kaizen-miniapp's own picker uses. */
     private void populateExercises(SessionEntity session, TelegramChatEntity chat, PreferencesDto preferences) {
+        Set<String> usedKeys = usedKeysFor(chat);
+
+        List<Candidate> ordered = new ArrayList<>(orderedCandidates(gameAnalysisRepository.findByChat(chat), usedKeys));
+        if (EXERCISE_SOURCE_MIXED.equals(preferences.exerciseSource())) {
+            ordered.addAll(orderedCandidates(gameAnalysisRepository.findByOrigin(ExerciseOrigin.PUBLIC), usedKeys));
+        }
+
+        saveCandidates(session, ordered, preferences.exerciseCount(), preferences.topVariants(), preferences.continuationDepth());
+    }
+
+    private Set<String> usedKeysFor(TelegramChatEntity chat) {
         Set<String> usedKeys = new HashSet<>();
         for (PracticeExerciseEntity exercise : practiceExerciseRepository.findBySession_Chat(chat)) {
             usedKeys.add(usageKey(exercise.getGame().getId(), exercise.getPhase()));
         }
+        return usedKeys;
+    }
 
+
+    private List<Candidate> orderedCandidates(List<GameAnalysisEntity> games, Set<String> usedKeys) {
         List<Candidate> unused = new ArrayList<>();
         List<Candidate> used = new ArrayList<>();
 
-        for (GameAnalysisEntity game : gameAnalysisRepository.findByChat(chat)) {
+        for (GameAnalysisEntity game : games) {
             for (Candidate candidate : candidatesOf(game)) {
                 boolean wasUsed = usedKeys.contains(usageKey(candidate.game().getId(), candidate.phase()));
                 (wasUsed ? used : unused).add(candidate);
@@ -256,11 +286,14 @@ public class PracticeService {
 
         List<Candidate> ordered = new ArrayList<>(unused);
         ordered.addAll(used);
+        return ordered;
+    }
 
+    private void saveCandidates(SessionEntity session, List<Candidate> ordered, int maxCount, int topVariants, int continuationDepth) {
         int positionOrder = 1;
         int rejectedUnreadable = 0;
         for (Candidate candidate : ordered) {
-            if (positionOrder > preferences.exerciseCount()) {
+            if (positionOrder > maxCount) {
                 break;
             }
             if (assembler.tryDisplayInfo(candidate.sgf()).isEmpty()) {
@@ -269,13 +302,13 @@ public class PracticeService {
             }
             practiceExerciseRepository.save(
                     new PracticeExerciseEntity(session, candidate.game(), candidate.phase(), positionOrder,
-                            preferences.topVariants(), preferences.continuationDepth()));
+                            topVariants, continuationDepth));
             positionOrder++;
         }
 
         if (positionOrder == 1) {
-            log.warn("populateExercises found nothing usable for session {} (chat {}): games={}, candidates={}, rejectedUnreadable={}",
-                    session.getId(), chat.getChatId(), gameAnalysisRepository.findByChat(chat).size(), ordered.size(), rejectedUnreadable);
+            log.warn("Found nothing usable for session {}: candidates={}, rejectedUnreadable={}",
+                    session.getId(), ordered.size(), rejectedUnreadable);
             session.setCompleted(true);
             sessionRepository.save(session);
         }
@@ -320,8 +353,10 @@ public class PracticeService {
         ExerciseDisplayInfo info = assembler.tryDisplayInfo(sgf)
                 .orElseThrow(() -> new IllegalStateException("Persisted exercise has unparsable SGF: " + exercise.getId()));
 
+        String origin = game.getOrigin() == ExerciseOrigin.PUBLIC ? "dataset" : "personal";
+
         return new ExerciseDto(
-                exercise.getId(), game.getId(), exercise.getPhase(), exercise.isCompleted(),
+                exercise.getId(), game.getId(), exercise.getPhase(), exercise.isCompleted(), origin, sgf,
                 info.opponentName(), info.opponentRank(), info.boardSize(), info.userSign(), info.moveNumber(),
                 exercise.getTopVariants(), exercise.getCurrentDepth(), exercise.getSelectedVariant(), exercise.getStep()
         );
