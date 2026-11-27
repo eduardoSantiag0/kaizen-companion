@@ -1,4 +1,4 @@
-package io.github.eduardosantiag0.kaizan_companion;
+package io.github.eduardosantiag0.kaizan_companion.infra.seed;
 
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.TelegramChatEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.UserInfoEntity;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class SeedDatabase implements ApplicationRunner {
+public class SeedDBDev implements ApplicationRunner {
 
     @Value("${PERSONAL_OGS}")
     private String ogsAccount;

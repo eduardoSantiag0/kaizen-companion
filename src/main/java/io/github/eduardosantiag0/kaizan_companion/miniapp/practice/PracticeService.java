@@ -57,6 +57,9 @@ public class PracticeService {
         this.assembler = assembler;
     }
 
+    private record Candidate(GameAnalysisEntity game, String phase, String sgf) {
+    }
+
     public Optional<SessionDto> getTodaySession(Long telegramUserId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
         return sessionRepository.findByChatAndSessionDateAndKind(chat, LocalDate.now(), "daily").map(this::toSessionDto);
@@ -333,6 +336,5 @@ public class PracticeService {
         };
     }
 
-    private record Candidate(GameAnalysisEntity game, String phase, String sgf) {
-    }
+
 }

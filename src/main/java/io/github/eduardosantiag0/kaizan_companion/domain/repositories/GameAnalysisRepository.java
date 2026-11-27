@@ -1,6 +1,7 @@
 package io.github.eduardosantiag0.kaizan_companion.domain.repositories;
 
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.AnalysisJobEntity;
+import io.github.eduardosantiag0.kaizan_companion.domain.entities.ExerciseOrigin;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.GameAnalysisEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.TelegramChatEntity;
 import io.github.eduardosantiag0.kaizan_companion.miniapp.GameHistoryDto;
@@ -29,4 +30,6 @@ public interface GameAnalysisRepository extends JpaRepository<GameAnalysisEntity
         ORDER BY g.jobEntity.createdAt DESC
     """)
     List<GameHistoryDto> findHistoryByChat(@Param("chat") TelegramChatEntity chat);
+
+    boolean existsByOrigin(ExerciseOrigin exerciseOrigin);
 }

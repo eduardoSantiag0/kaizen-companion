@@ -1,5 +1,6 @@
 package io.github.eduardosantiag0.kaizan_companion.domain.entities;
 
+import io.github.eduardosantiag0.kaizan_companion.infra.seed.DatasetGameDto;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -16,11 +17,11 @@ public class GameAnalysisEntity {
     private UUID id;
 
     @OneToOne
-    @JoinColumn(name = "job_id", nullable = false)
+    @JoinColumn(name = "job_id")
     private AnalysisJobEntity jobEntity;
 
     @ManyToOne
-    @JoinColumn(name = "chat_id", nullable = false)
+    @JoinColumn(name = "chat_id")
     private TelegramChatEntity chat;
 
     @Column(name = "opening_analysed",
@@ -56,6 +57,10 @@ public class GameAnalysisEntity {
     @Setter
     private String gameRank;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "origin", nullable = false)
+    private ExerciseOrigin origin = ExerciseOrigin.PERSONAL;
+
 
     public GameAnalysisEntity(AnalysisJobEntity jobEntity, TelegramChatEntity chat) {
         this.jobEntity = jobEntity;
@@ -63,5 +68,19 @@ public class GameAnalysisEntity {
     }
 
     public GameAnalysisEntity() {
+    }
+
+    public static GameAnalysisEntity fromDataset(DatasetGameDto game) {
+        var entity = new GameAnalysisEntity();
+
+        entity.origin = ExerciseOrigin.PUBLIC;
+        entity.openingAnalysed = game.openingAnalysed();
+        entity.middlegameAnalysed = game.middlegameAnalysed();
+        entity.endgameAnalysed = game.endgameAnalysed();
+        entity.blackPlayer = game.blackPlayer();
+        entity.whitePlayer = game.whitePlayer();
+        entity.gameRank = game.gameRank();
+
+        return entity;
     }
 }
