@@ -22,7 +22,8 @@ class NotificationServiceTest {
     @Test
     void sendMessageToChat_withText_mustActuallyCallTheTelegramClient() throws TelegramApiException {
         TelegramClient telegramClient = mock(TelegramClient.class);
-        NotificationService service = new NotificationService(telegramClient);
+        PopUpService popUpService= mock(PopUpService.class);
+        NotificationService service = new NotificationService(telegramClient, popUpService);
 
         service.sendMessageToChat(new ReplyWithText(42L, "hello"));
 
@@ -32,7 +33,8 @@ class NotificationServiceTest {
     @Test
     void sendErrorMessage_mustActuallyCallTheTelegramClient() throws TelegramApiException {
         TelegramClient telegramClient = mock(TelegramClient.class);
-        NotificationService service = new NotificationService(telegramClient);
+        PopUpService popUpService= mock(PopUpService.class);
+        NotificationService service = new NotificationService(telegramClient, popUpService);
 
         service.sendErrorMessage(new ReplyWithText(42L, "something went wrong"));
 
@@ -42,7 +44,8 @@ class NotificationServiceTest {
     @Test
     void sendMessageToChat_withFile_mustSendTheGameBytesAsADocument_insteadOfDiscardingThem() throws TelegramApiException {
         TelegramClient telegramClient = mock(TelegramClient.class);
-        NotificationService service = new NotificationService(telegramClient);
+        PopUpService popUpService= mock(PopUpService.class);
+        NotificationService service = new NotificationService(telegramClient, popUpService);
 
         byte[] sgfBytes = "(;GM[1]FF[4])".getBytes(StandardCharsets.UTF_8);
 
@@ -56,7 +59,8 @@ class NotificationServiceTest {
         TelegramClient telegramClient = mock(TelegramClient.class);
         when(telegramClient.execute(any(SendMessage.class))).thenThrow(new TelegramApiException("boom"));
 
-        NotificationService service = new NotificationService(telegramClient);
+        PopUpService popUpService= mock(PopUpService.class);
+        NotificationService service = new NotificationService(telegramClient, popUpService);
 
         assertThrows(ChatNotificationException.class,
                 () -> service.sendMessageToChat(new ReplyWithText(42L, "hello")));

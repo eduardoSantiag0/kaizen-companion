@@ -30,8 +30,6 @@ public class NotificationService {
     }
 
 
-//    https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage?chat_id=<YOUR_CHAT_ID>&text=Hello%20from%20my%20bot
-
     @Retryable(
             retryFor = TelegramApiException.class,
             maxAttempts = 3,

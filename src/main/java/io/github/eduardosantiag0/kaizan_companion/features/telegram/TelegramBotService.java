@@ -5,6 +5,7 @@ package io.github.eduardosantiag0.kaizan_companion.features.telegram;
 
 import io.github.eduardosantiag0.kaizan_companion.exceptions.commands.UnknownCommandException;
 import io.github.eduardosantiag0.kaizan_companion.exceptions.telegram.CommandMisuseException;
+import io.github.eduardosantiag0.kaizan_companion.features.handlers.InputFileService;
 import io.github.eduardosantiag0.kaizan_companion.features.handlers.commands.*;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithText;
@@ -47,7 +48,7 @@ public class TelegramBotService
     private final UnlinkCommandHandler unlinkCommandHandler;
     private final AddDgsCommandHandler addDgsCommandHandler;
     private final AddGoogleDriveCommandHandler addGoogleDriveCommandHandler;
-    private final TelegramClient telegramClient;
+    private final InputFileService inputFileService;
 
 
     public TelegramBotService(
@@ -55,7 +56,7 @@ public class TelegramBotService
             @Value("${telegram.bot.token}") String botToken,
             StartCommandHandler startCommandHandler,
             StudyCommandHandler studyCommandHandler,
-            TelegramClient telegramClient, AddOgsCommandHandler addOgsCommandHandler, LastGameCommandHandler lastGameCommandHandler, NotificationService notificationService, ResignCommandHandler resignCommandHandler, CollectionCommandHandler collectionCommandHandler, RandomCommandHandler randomCommandHandler, QueueCommandHandler queueCommandHandler, AddEmailCommandHandler addEmailCommandHandler, MyProfileCommandHandler myProfileCommandHandler, UnlinkCommandHandler unlinkCommandHandler, AddDgsCommandHandler addDgsCommandHandler, AddGoogleDriveCommandHandler addGoogleDriveCommandHandler) {
+            TelegramClient telegramClient, AddOgsCommandHandler addOgsCommandHandler, LastGameCommandHandler lastGameCommandHandler, NotificationService notificationService, ResignCommandHandler resignCommandHandler, CollectionCommandHandler collectionCommandHandler, RandomCommandHandler randomCommandHandler, QueueCommandHandler queueCommandHandler, AddEmailCommandHandler addEmailCommandHandler, MyProfileCommandHandler myProfileCommandHandler, UnlinkCommandHandler unlinkCommandHandler, AddDgsCommandHandler addDgsCommandHandler, AddGoogleDriveCommandHandler addGoogleDriveCommandHandler, InputFileService inputFileService) {
         this.botName = botName;
         this.botToken = botToken;
         this.startCommandHandler = startCommandHandler;
@@ -72,7 +73,7 @@ public class TelegramBotService
         this.unlinkCommandHandler = unlinkCommandHandler;
         this.addDgsCommandHandler = addDgsCommandHandler;
         this.addGoogleDriveCommandHandler = addGoogleDriveCommandHandler;
-        this.telegramClient = telegramClient;
+        this.inputFileService = inputFileService;
     }
 
 
@@ -103,9 +104,15 @@ public class TelegramBotService
         notificationService.sendErrorMessage(new ReplyWithText(update.getMessage().getChatId(), text));
     }
 
+
     private void handle(Update update) throws TelegramApiException, IOException, CommandMisuseException{
         if (update.getMessage() == null || update.getMessage().getText() == null) {
             logger.debug("Ignoring update {} without a text message", update.getUpdateId());
+            return;
+        }
+
+        if (update.getMessage().hasDocument()) {
+            inputFileService.executeCommand(update);
             return;
         }
 

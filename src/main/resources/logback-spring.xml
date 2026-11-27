@@ -8,7 +8,25 @@
             </encoder>
         </appender>
 
-        <logger name="com.eduardoSantiag0.kaizan-companion"
+        <logger name="io.github.eduardosantiag0.kaizan_companion"
+                level="DEBUG">
+            <appender-ref ref="STDOUT"/>
+        </logger>
+
+        <root level="INFO">
+            <appender-ref ref="STDOUT"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="!dev &amp; !prod">
+
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern> [%d{HH:mm:ss}] %highlight(%-5level) %msg%n </pattern>
+            </encoder>
+        </appender>
+
+        <logger name="io.github.eduardosantiag0.kaizan_companion"
                 level="DEBUG">
             <appender-ref ref="STDOUT"/>
         </logger>
@@ -26,7 +44,7 @@
             </encoder>
         </appender>
 
-        <logger name="com.eduardoSantiag0.kaizan-companion"
+        <logger name="io.github.eduardosantiag0.kaizan_companion"
                 level="DEBUG">
             <appender-ref ref="STDOUT"/>
         </logger>

@@ -1,5 +1,6 @@
 package io.github.eduardosantiag0.kaizan_companion.features.telegram;
 
+import io.github.eduardosantiag0.kaizan_companion.features.handlers.InputFileService;
 import io.github.eduardosantiag0.kaizan_companion.features.handlers.commands.*;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.support.TelegramFixtures;
@@ -35,7 +36,8 @@ class TelegramBotServiceTest {
                 mock(MyProfileCommandHandler.class),
                 mock(UnlinkCommandHandler.class),
                 mock(AddDgsCommandHandler.class),
-                mock(AddGoogleDriveCommandHandler.class)
+                mock(AddGoogleDriveCommandHandler.class),
+                mock(InputFileService.class)
         );
     }
 

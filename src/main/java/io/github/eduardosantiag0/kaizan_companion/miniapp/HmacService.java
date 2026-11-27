@@ -23,7 +23,8 @@ public class HmacService {
 
     public HmacService(
             @Value("${telegram.bot.token}")
-            String botToken) {
+            String botToken
+    ) {
         BOT_TOKEN = botToken;
     }
 
