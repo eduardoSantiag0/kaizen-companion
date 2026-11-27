@@ -22,9 +22,15 @@ public class NotificationService {
 
     private final TelegramClient telegramClient;
 
-    public NotificationService(TelegramClient telegramClient) {
+    private final PopUpService popUpService;
+
+    public NotificationService(TelegramClient telegramClient, PopUpService popUpService) {
         this.telegramClient = telegramClient;
+        this.popUpService = popUpService;
     }
+
+
+//    https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage?chat_id=<YOUR_CHAT_ID>&text=Hello%20from%20my%20bot
 
     @Retryable(
             retryFor = TelegramApiException.class,
@@ -44,10 +50,11 @@ public class NotificationService {
                 .document(new InputFile(new ByteArrayInputStream(message.gameBytes()), fileName))
                 .caption(message.text())
                 .build();
-
         try {
             telegramClient.execute(request);
+            popUpService.execute(message.chatId());
             log.info("Arquivo enviado com sucesso para o chat {}", message.chatId());
+
         } catch (TelegramApiException e) {
             log.error("Failed to send file to chat {}", message.chatId(), e);
             throw new ChatNotificationException(
