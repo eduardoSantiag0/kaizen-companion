@@ -18,7 +18,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.lang.reflect.Field;
 import java.time.Instant;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.SliceImpl;
+
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -33,6 +39,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,7 +51,7 @@ class PracticeServiceTest {
             "(;FF[4]SZ[19]PB[blackPlayer]PW[whitePlayer]BR[5k]WR[3d]PL[B](;B[pd];W[dp])(;B[dd]))";
 
     // No second child anywhere on the main line — not exercise-able.
-    private static final String NO_BRANCH_SGF = "(;FF[4]SZ[19]PL[B];B[pd];W[dp])";
+    private static final String NO_BRANCH_SGF = "(;FF[4]SZ[19];B[pd];W[dp])";
 
     private final TelegramChatRepository chatRepository = mock(TelegramChatRepository.class);
     private final SessionRepository sessionRepository = mock(SessionRepository.class);
@@ -53,8 +60,12 @@ class PracticeServiceTest {
     private final GameAnalysisRepository gameRepository = mock(GameAnalysisRepository.class);
     private final PracticeExerciseAssembler assembler = new PracticeExerciseAssembler();
 
+    private static final LocalDate TODAY = LocalDate.of(2026, 11, 27);
+    private static final ZoneId PRACTICE_ZONE = ZoneId.of("America/Sao_Paulo");
+    private final PracticeCalendar calendar = new PracticeCalendar(
+            Clock.fixed(Instant.parse("2026-11-28T02:59:59Z"), PRACTICE_ZONE));
     private final PracticeService service = new PracticeService(
-            chatRepository, sessionRepository, exerciseRepository, preferencesRepository, gameRepository, assembler);
+            chatRepository, sessionRepository, exerciseRepository, preferencesRepository, gameRepository, assembler, calendar);
 
     private static TelegramChatEntity chat() {
         return new TelegramChatEntity(1L, "Ana", "ana", "private", false);
@@ -157,7 +168,7 @@ class PracticeServiceTest {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        SessionEntity existing = new SessionEntity(chat, LocalDate.now(), "daily");
+        SessionEntity existing = new SessionEntity(chat, TODAY, "daily");
         GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
         PracticeExerciseEntity exercise = new PracticeExerciseEntity(existing, game, "opening", 1, 3, 4);
         when(sessionRepository.findByChatAndSessionDateAndKind(eq(chat), any(), eq("daily"))).thenReturn(Optional.of(existing));
@@ -177,7 +188,7 @@ class PracticeServiceTest {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        SessionEntity existing = new SessionEntity(chat, LocalDate.now(), "daily");
+        SessionEntity existing = new SessionEntity(chat, TODAY, "daily");
         when(sessionRepository.findByChatAndSessionDateAndKind(eq(chat), any(), eq("daily"))).thenReturn(Optional.of(existing));
 
         GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
@@ -215,7 +226,7 @@ class PracticeServiceTest {
         when(gameRepository.findByChat(chat)).thenReturn(List.of(game1, game2));
 
         // Used previously: game1/middlegame and game2/opening — 2 used, 4 unused, 6 candidates total.
-        SessionEntity oldSession = new SessionEntity(chat, LocalDate.now().minusDays(1), "daily");
+        SessionEntity oldSession = new SessionEntity(chat, TODAY.minusDays(1), "daily");
         PracticeExerciseEntity usedOne = new PracticeExerciseEntity(oldSession, game1, "middlegame", 1, 3, 4);
         PracticeExerciseEntity usedTwo = new PracticeExerciseEntity(oldSession, game2, "opening", 2, 3, 4);
         when(exerciseRepository.findBySession_Chat(chat)).thenReturn(List.of(usedOne, usedTwo));
@@ -266,48 +277,66 @@ class PracticeServiceTest {
     }
 
     @Test
-    void recordResult_onExerciseNotOwnedByChat_throwsNotFound() {
+    void recordResult_onExerciseOutsideTheRequestedSession_throwsNotFound() {
         TelegramChatEntity chat = chat();
-        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        SessionEntity session = new SessionEntity(chat, TODAY, "daily");
+        UUID sessionId = UUID.randomUUID();
         UUID exerciseId = UUID.randomUUID();
-        when(exerciseRepository.findByIdAndSession_Chat(exerciseId, chat)).thenReturn(Optional.empty());
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.findForResultUpdate(sessionId, chat)).thenReturn(Optional.of(session));
 
-        assertThrows(ResponseStatusException.class, () -> service.recordResult(1L, exerciseId));
+        var error = assertThrows(ResponseStatusException.class, () -> service.recordResult(1L, sessionId, exerciseId));
+
+        assertEquals(404, error.getStatusCode().value());
+        verify(sessionRepository, never()).save(any());
     }
 
     @Test
-    void recordResult_whenItIsTheLastUnfinishedExercise_marksTheSessionCompleted() {
+    void recordResult_onSessionNotOwnedByChat_throwsNotFoundWithoutUpdatingExercises() {
         TelegramChatEntity chat = chat();
+        UUID sessionId = UUID.randomUUID();
+        UUID exerciseId = UUID.randomUUID();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        SessionEntity session = new SessionEntity(chat, LocalDate.now(), "daily");
+        var error = assertThrows(ResponseStatusException.class, () -> service.recordResult(1L, sessionId, exerciseId));
+
+        assertEquals(404, error.getStatusCode().value());
+        verify(exerciseRepository, never()).completeIfPending(any(), any());
+    }
+
+    @Test
+    void recordResult_whenRetriedAfterCompletion_keepsTheSessionCompletedWithoutReapplyingTheResult() {
+        TelegramChatEntity chat = chat();
+        SessionEntity session = new SessionEntity(chat, TODAY, "daily");
         GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
         PracticeExerciseEntity exercise = new PracticeExerciseEntity(session, game, "opening", 1, 3, 4);
+        UUID sessionId = UUID.randomUUID();
         UUID exerciseId = UUID.randomUUID();
-        when(exerciseRepository.findByIdAndSession_Chat(exerciseId, chat)).thenReturn(Optional.of(exercise));
-        when(exerciseRepository.findBySessionOrderByPositionOrder(session)).thenReturn(List.of(exercise));
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.findForResultUpdate(sessionId, chat)).thenReturn(Optional.of(session));
+        when(exerciseRepository.completeIfPending(exerciseId, sessionId)).thenReturn(1, 0);
+        when(exerciseRepository.findByIdAndSession_IdAndSession_Chat(exerciseId, sessionId, chat)).thenReturn(Optional.of(exercise));
 
-        service.recordResult(1L, exerciseId);
+        service.recordResult(1L, sessionId, exerciseId);
+        service.recordResult(1L, sessionId, exerciseId);
 
-        assertTrue(exercise.isCompleted());
         assertTrue(session.isCompleted());
-        verify(sessionRepository).save(session);
+        verify(exerciseRepository, times(1)).existsBySessionAndCompletedFalse(session);
+        verify(sessionRepository, times(1)).save(session);
     }
 
     @Test
     void recordResult_whenOtherExercisesAreStillPending_leavesSessionIncomplete() {
         TelegramChatEntity chat = chat();
-        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
-
-        SessionEntity session = new SessionEntity(chat, LocalDate.now(), "daily");
-        GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF, "middlegame", BRANCHING_SGF);
-        PracticeExerciseEntity exercise = new PracticeExerciseEntity(session, game, "opening", 1, 3, 4);
-        PracticeExerciseEntity pending = new PracticeExerciseEntity(session, game, "middlegame", 2, 3, 4);
+        SessionEntity session = new SessionEntity(chat, TODAY, "generated");
+        UUID sessionId = UUID.randomUUID();
         UUID exerciseId = UUID.randomUUID();
-        when(exerciseRepository.findByIdAndSession_Chat(exerciseId, chat)).thenReturn(Optional.of(exercise));
-        when(exerciseRepository.findBySessionOrderByPositionOrder(session)).thenReturn(List.of(exercise, pending));
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.findForResultUpdate(sessionId, chat)).thenReturn(Optional.of(session));
+        when(exerciseRepository.completeIfPending(exerciseId, sessionId)).thenReturn(1);
+        when(exerciseRepository.existsBySessionAndCompletedFalse(session)).thenReturn(true);
 
-        service.recordResult(1L, exerciseId);
+        service.recordResult(1L, sessionId, exerciseId);
 
         assertFalse(session.isCompleted());
         verify(sessionRepository, never()).save(any());
@@ -378,32 +407,13 @@ class PracticeServiceTest {
     }
 
     @Test
-    void saveProgress_onExerciseNotOwnedByChat_throwsNotFound() {
-        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat()));
-        UUID exerciseId = UUID.randomUUID();
-        when(exerciseRepository.findByIdAndSession_Chat(exerciseId, chat())).thenReturn(Optional.empty());
-
-        assertThrows(ResponseStatusException.class,
-                () -> service.saveProgress(1L, exerciseId, new ProgressDto(1, 2, 6)));
-    }
-
-    @Test
-    void saveProgress_withValidExercise_updatesSelectedVariantStepAndDepth() {
-        TelegramChatEntity chat = chat();
-        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
-
-        SessionEntity session = new SessionEntity(chat, LocalDate.now(), "daily");
-        GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
-        PracticeExerciseEntity exercise = new PracticeExerciseEntity(session, game, "opening", 1, 3, 4);
-        UUID exerciseId = UUID.randomUUID();
-        when(exerciseRepository.findByIdAndSession_Chat(exerciseId, chat)).thenReturn(Optional.of(exercise));
-
-        service.saveProgress(1L, exerciseId, new ProgressDto(1, 2, 6));
-
-        assertEquals(1, exercise.getSelectedVariant());
-        assertEquals(2, exercise.getStep());
-        assertEquals(6, exercise.getCurrentDepth());
-        verify(exerciseRepository).save(exercise);
+    void exerciseValidation_tracksCapturesAndRejectsIllegalOrNonAlternatingMoves() {
+        // White at aa is captured by the historical black move at ab.
+        var captured = assembler.validate("(;FF[4]SZ[9]AB[ba]AW[aa]PL[W];B[ab](;W[ca];B[aa])(;W[cc]))");
+        assertEquals(2, captured.orElseThrow().moveNumber());
+        assertTrue(assembler.validate("(;FF[4]SZ[9]PL[B];B[aa];W[aa])").isEmpty());
+        assertTrue(assembler.validate("(;FF[4]SZ[9]PL[B];B[aa];B[bb])").isEmpty());
+        assertTrue(assembler.validate("(;FF[4]SZ[9]PL[B];B[aa])").isPresent());
     }
 
     @Test
@@ -422,7 +432,7 @@ class PracticeServiceTest {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = TODAY;
         SessionEntity todaySession = completedSessionWithOneExercise(chat, today);
         SessionEntity yesterdaySession = completedSessionWithOneExercise(chat, today.minusDays(1));
         SessionEntity twoDaysAgoSession = completedSessionWithOneExercise(chat, today.minusDays(2));
@@ -439,7 +449,7 @@ class PracticeServiceTest {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = TODAY;
         SessionEntity todaySession = completedSessionWithOneExercise(chat, today);
         SessionEntity emptyYesterday = new SessionEntity(chat, today.minusDays(1), "daily"); // 0 exercises, auto-completed
         emptyYesterday.setCompleted(true);
@@ -457,7 +467,7 @@ class PracticeServiceTest {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = TODAY;
         SessionEntity todaySession = completedSessionWithOneExercise(chat, today);
         // No session at all two days ago — the backward walk stops there.
         when(sessionRepository.findByChatAndKind(chat, "daily")).thenReturn(List.of(todaySession));
@@ -472,7 +482,7 @@ class PracticeServiceTest {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = TODAY;
         SessionEntity yesterdaySession = completedSessionWithOneExercise(chat, today.minusDays(1));
         SessionEntity todaySession = new SessionEntity(chat, today, "daily"); // started, not finished
         GameAnalysisEntity game = gameWithPhases(chat, "opening", BRANCHING_SGF);
@@ -493,7 +503,7 @@ class PracticeServiceTest {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = TODAY;
         SessionEntity yesterdaySession = completedSessionWithOneExercise(chat, today.minusDays(1));
         when(sessionRepository.findByChatAndKind(chat, "daily")).thenReturn(List.of(yesterdaySession));
 
@@ -623,20 +633,34 @@ class PracticeServiceTest {
     }
 
     @Test
-    void listSessions_returnsDailyAndGeneratedSessionsTogether() {
+    void listSessions_returnsSummaryPageWithoutLoadingExerciseDetails() {
+        TelegramChatEntity chat = chat();
+        var summary = new SessionSummaryDto(UUID.randomUUID(), "generated", TODAY, false, 5L, 2L);
+        var pageable = PageRequest.of(0, 1);
+        when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
+        when(sessionRepository.listSummaries(chat, "generated", pageable))
+                .thenReturn(new SliceImpl<>(List.of(summary), pageable, true));
+
+        var page = service.listSessions(1L, 0, 1, "generated");
+
+        assertEquals(List.of(summary), page.sessions());
+        assertEquals(1, page.nextPage());
+        verify(exerciseRepository, never()).findBySessionOrderByPositionOrder(any());
+    }
+
+    @Test
+    void getTodayAndStreak_useThePracticeDateBeforeMidnightInSaoPaulo() {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
 
-        SessionEntity daily = new SessionEntity(chat, LocalDate.now(), "daily");
-        SessionEntity generated = new SessionEntity(chat, LocalDate.now(), "generated");
-        when(sessionRepository.findByChat(chat)).thenReturn(List.of(daily, generated));
-        when(exerciseRepository.findBySessionOrderByPositionOrder(any(SessionEntity.class))).thenReturn(List.of());
+        service.getTodaySession(1L);
+        var streak = service.getStreak(1L);
 
-        List<SessionDto> sessions = service.listSessions(1L);
-
-        assertEquals(2, sessions.size());
-        assertEquals(1, sessions.stream().filter(s -> s.kind().equals("daily")).count());
-        assertEquals(1, sessions.stream().filter(s -> s.kind().equals("generated")).count());
+        verify(sessionRepository).findByChatAndSessionDateAndKind(chat, TODAY, "daily");
+        assertEquals(TODAY, streak.date());
+        assertEquals(PRACTICE_ZONE.getId(), streak.timeZone());
+        assertEquals(TODAY.plusDays(1), new PracticeCalendar(
+                Clock.fixed(Instant.parse("2026-11-28T03:00:00Z"), PRACTICE_ZONE)).today());
     }
 
     @Test
@@ -657,7 +681,7 @@ class PracticeServiceTest {
         TelegramChatEntity chat = chat();
         when(chatRepository.findById(1L)).thenReturn(Optional.of(chat));
         UUID sessionId = UUID.randomUUID();
-        SessionEntity session = new SessionEntity(chat, LocalDate.now(), "daily");
+        SessionEntity session = new SessionEntity(chat, TODAY, "daily");
         when(sessionRepository.findByIdAndChat(sessionId, chat)).thenReturn(Optional.of(session));
 
         GameAnalysisEntity healthyGame = gameWithPhases(chat, "opening", BRANCHING_SGF);

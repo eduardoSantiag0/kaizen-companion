@@ -3,6 +3,7 @@ package io.github.eduardosantiag0.kaizan_companion.infra.seed;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.ExerciseOrigin;
 import io.github.eduardosantiag0.kaizan_companion.domain.entities.GameAnalysisEntity;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.GameAnalysisRepository;
+import io.github.eduardosantiag0.kaizan_companion.miniapp.practice.PracticeExerciseAssembler;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +23,7 @@ public class SeedPublicDataset implements ApplicationRunner {
 
     private final GameAnalysisRepository repository;
     private final ObjectMapper objectMapper;
+    private final PracticeExerciseAssembler exerciseAssembler;
 
     @Override
     @Transactional
@@ -42,7 +44,11 @@ public class SeedPublicDataset implements ApplicationRunner {
             for (var game : games) {
                 var entity = GameAnalysisEntity.fromDataset(game);
 
-                repository.save(entity);
+                if (exerciseAssembler.validate(entity.getOpeningAnalysed()).isEmpty()) entity.setOpeningAnalysed(null);
+                if (exerciseAssembler.validate(entity.getMiddlegameAnalysed()).isEmpty()) entity.setMiddlegameAnalysed(null);
+                if (exerciseAssembler.validate(entity.getEndgameAnalysed()).isEmpty()) entity.setEndgameAnalysed(null);
+                if (entity.getOpeningAnalysed() != null || entity.getMiddlegameAnalysed() != null
+                        || entity.getEndgameAnalysed() != null) repository.save(entity);
             }
         }
     }

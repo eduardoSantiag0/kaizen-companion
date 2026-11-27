@@ -15,8 +15,6 @@ public record ExerciseDto(
         int userSign,
         int moveNumber,
         int topVariants,
-        int currentDepth,
-        Integer selectedVariant,
-        int step
+        int requiredDepth
 ) {
 }

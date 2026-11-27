@@ -10,6 +10,7 @@ import io.github.eduardosantiag0.kaizan_companion.domain.repositories.UserInfoRe
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.dtos.runpod.GameAnalysisResponse;
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.dtos.runpod.RunPodResponse;
 import io.github.eduardosantiag0.kaizan_companion.features.analysis.katago.KatagoAssembler;
+import io.github.eduardosantiag0.kaizan_companion.miniapp.practice.PracticeExerciseAssembler;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.NotificationService;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.messaging.EmailNotificationProducer;
 import io.github.eduardosantiag0.kaizan_companion.features.storage.messaging.DriveStorageProducer;
@@ -59,7 +60,8 @@ class AnalysisAggregatorTest {
                 gameAnalysisRepository,
                 userInfoRepository,
                 mock(EmailNotificationProducer.class),
-                mock(DriveStorageProducer.class)
+                mock(DriveStorageProducer.class),
+                new PracticeExerciseAssembler()
         );
 
         RunPodResponse response = new RunPodResponse(

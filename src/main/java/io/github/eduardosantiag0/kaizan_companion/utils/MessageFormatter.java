@@ -123,7 +123,7 @@ public class MessageFormatter {
 
               ◉ ANALYSIS COMPLETE!
 
-            ╰────────────────────╯
+            ╰──────────────────╯
 
             %s
 

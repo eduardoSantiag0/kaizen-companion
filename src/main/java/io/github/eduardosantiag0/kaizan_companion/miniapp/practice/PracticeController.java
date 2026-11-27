@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -86,8 +85,11 @@ public class PracticeController {
     }
 
     @GetMapping("sessions")
-    public ResponseEntity<List<SessionDto>> listSessions(
-            @RequestHeader(value = "Authorization", required = false) String authorization
+    public ResponseEntity<SessionPageDto> listSessions(
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String kind
     ) {
         if (authorization == null || !authorization.startsWith("tma ")) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
@@ -95,7 +97,7 @@ public class PracticeController {
         String initData = authorization.substring(4);
         Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
 
-        return ResponseEntity.ok(service.listSessions(telegramUserId));
+        return ResponseEntity.ok(service.listSessions(telegramUserId, page, size, kind));
     }
 
     @GetMapping("sessions/{sessionId}")
@@ -114,9 +116,10 @@ public class PracticeController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    @PostMapping("today/exercises/{exerciseId}/result")
+    @PostMapping("sessions/{sessionId}/exercises/{exerciseId}/result")
     public ResponseEntity<Void> recordResult(
             @RequestHeader(value = "Authorization", required = false) String authorization,
+            @PathVariable UUID sessionId,
             @PathVariable UUID exerciseId
     ) {
         if (authorization == null || !authorization.startsWith("tma ")) {
@@ -125,23 +128,7 @@ public class PracticeController {
         String initData = authorization.substring(4);
         Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
 
-        service.recordResult(telegramUserId, exerciseId);
-        return ResponseEntity.noContent().build();
-    }
-
-    @PutMapping("today/exercises/{exerciseId}/progress")
-    public ResponseEntity<Void> saveProgress(
-            @RequestHeader(value = "Authorization", required = false) String authorization,
-            @PathVariable UUID exerciseId,
-            @RequestBody ProgressDto progress
-    ) {
-        if (authorization == null || !authorization.startsWith("tma ")) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-        }
-        String initData = authorization.substring(4);
-        Long telegramUserId = telegramInitDataService.validateAndGetUserId(initData);
-
-        service.saveProgress(telegramUserId, exerciseId, progress);
+        service.recordResult(telegramUserId, sessionId, exerciseId);
         return ResponseEntity.noContent().build();
     }
 

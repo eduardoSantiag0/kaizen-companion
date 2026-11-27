@@ -12,6 +12,7 @@ import io.github.eduardosantiag0.kaizan_companion.domain.repositories.PracticePr
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.SessionRepository;
 import io.github.eduardosantiag0.kaizan_companion.domain.repositories.TelegramChatRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,17 +46,20 @@ public class PracticeService {
     private final PracticePreferencesRepository practicePreferencesRepository;
     private final GameAnalysisRepository gameAnalysisRepository;
     private final PracticeExerciseAssembler assembler;
+    private final PracticeCalendar calendar;
 
     public PracticeService(TelegramChatRepository telegramChatRepository, SessionRepository sessionRepository,
                             PracticeExerciseRepository practiceExerciseRepository,
                             PracticePreferencesRepository practicePreferencesRepository,
-                            GameAnalysisRepository gameAnalysisRepository, PracticeExerciseAssembler assembler) {
+                            GameAnalysisRepository gameAnalysisRepository, PracticeExerciseAssembler assembler,
+                            PracticeCalendar calendar) {
         this.telegramChatRepository = telegramChatRepository;
         this.sessionRepository = sessionRepository;
         this.practiceExerciseRepository = practiceExerciseRepository;
         this.practicePreferencesRepository = practicePreferencesRepository;
         this.gameAnalysisRepository = gameAnalysisRepository;
         this.assembler = assembler;
+        this.calendar = calendar;
     }
 
     private record Candidate(GameAnalysisEntity game, String phase, String sgf) {
@@ -63,13 +67,13 @@ public class PracticeService {
 
     public Optional<SessionDto> getTodaySession(Long telegramUserId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
-        return sessionRepository.findByChatAndSessionDateAndKind(chat, LocalDate.now(), "daily").map(this::toSessionDto);
+        return sessionRepository.findByChatAndSessionDateAndKind(chat, calendar.today(), "daily").map(this::toSessionDto);
     }
 
     @Transactional
     public SessionDto startTodaySession(Long telegramUserId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
-        LocalDate today = LocalDate.now();
+        LocalDate today = calendar.today();
 
         SessionEntity session = sessionRepository.findByChatAndSessionDateAndKind(chat, today, "daily")
                 .orElseGet(() -> sessionRepository.save(new SessionEntity(chat, today, "daily")));
@@ -85,7 +89,7 @@ public class PracticeService {
     @Transactional
     public SessionDto startNewRound(Long telegramUserId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
-        return toSessionDto(createSession(chat, LocalDate.now(), "generated", resolvePreferences(telegramUserId)));
+        return toSessionDto(createSession(chat, calendar.today(), "generated", resolvePreferences(telegramUserId)));
     }
 
 
@@ -97,18 +101,21 @@ public class PracticeService {
         TelegramChatEntity chat = requireChat(telegramUserId);
         PreferencesDto preferences = resolvePreferences(telegramUserId);
 
-        SessionEntity session = sessionRepository.save(new SessionEntity(chat, LocalDate.now(), "generated"));
+        SessionEntity session = sessionRepository.save(new SessionEntity(chat, calendar.today(), "generated"));
         List<Candidate> ordered = orderedCandidates(gameAnalysisRepository.findByOrigin(ExerciseOrigin.PUBLIC), usedKeysFor(chat));
         saveCandidates(session, ordered, count, preferences.topVariants(), preferences.continuationDepth());
 
         return toSessionDto(session);
     }
 
-    public List<SessionDto> listSessions(Long telegramUserId) {
+    public SessionPageDto listSessions(Long telegramUserId, int page, int size, String kind) {
+        if (page < 0 || size < 1 || size > 100 || (long) page * size > Integer.MAX_VALUE
+                || (kind != null && !kind.equals("daily") && !kind.equals("generated"))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid session listing parameters");
+        }
         TelegramChatEntity chat = requireChat(telegramUserId);
-        List<SessionEntity> sessions = new ArrayList<>(sessionRepository.findByChat(chat));
-        sessions.sort((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt()));
-        return sessions.stream().map(this::toSessionDto).toList();
+        var summaries = sessionRepository.listSummaries(chat, kind, PageRequest.of(page, size));
+        return new SessionPageDto(summaries.getContent(), summaries.hasNext() ? page + 1 : null);
     }
 
     public Optional<SessionDto> getSession(Long telegramUserId, UUID sessionId) {
@@ -117,20 +124,19 @@ public class PracticeService {
     }
 
     @Transactional
-    public void recordResult(Long telegramUserId, UUID exerciseId) {
+    public void recordResult(Long telegramUserId, UUID sessionId, UUID exerciseId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
-        PracticeExerciseEntity exercise = practiceExerciseRepository.findByIdAndSession_Chat(exerciseId, chat)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Exercise not found"));
+        // Serialize result updates within the session so concurrent completions
+        // cannot both miss the transition to a fully completed session.
+        SessionEntity session = sessionRepository.findForResultUpdate(sessionId, chat)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Session not found"));
+        if (practiceExerciseRepository.completeIfPending(exerciseId, sessionId) == 0) {
+            practiceExerciseRepository.findByIdAndSession_IdAndSession_Chat(exerciseId, sessionId, chat)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Exercise not found"));
+            return;
+        }
 
-        exercise.setCompleted(true);
-        practiceExerciseRepository.save(exercise);
-
-        SessionEntity session = exercise.getSession();
-        boolean allCompleted = practiceExerciseRepository.findBySessionOrderByPositionOrder(session)
-                .stream()
-                .allMatch(PracticeExerciseEntity::isCompleted);
-
-        if (allCompleted) {
+        if (!session.isCompleted() && !practiceExerciseRepository.existsBySessionAndCompletedFalse(session)) {
             session.setCompleted(true);
             sessionRepository.save(session);
         }
@@ -141,19 +147,6 @@ public class PracticeService {
         return resolvePreferences(telegramUserId);
     }
 
-    @Transactional
-    public void saveProgress(Long telegramUserId, UUID exerciseId, ProgressDto progress) {
-        TelegramChatEntity chat = requireChat(telegramUserId);
-        PracticeExerciseEntity exercise = practiceExerciseRepository.findByIdAndSession_Chat(exerciseId, chat)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Exercise not found"));
-
-        exercise.setSelectedVariant(progress.selectedVariant());
-        exercise.setStep(progress.step());
-        exercise.setCurrentDepth(progress.currentDepth());
-        practiceExerciseRepository.save(exercise);
-    }
-
-
     public StreakDto getStreak(Long telegramUserId) {
         TelegramChatEntity chat = requireChat(telegramUserId);
         Map<LocalDate, SessionEntity> byDate = new LinkedHashMap<>();
@@ -161,7 +154,7 @@ public class PracticeService {
             byDate.put(session.getSessionDate(), session);
         }
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = calendar.today();
 
         SessionEntity todaySession = byDate.get(today);
         boolean todayCounts = todaySession != null && hasExercises(todaySession) && todaySession.isCompleted();
@@ -187,7 +180,7 @@ public class PracticeService {
             last7Days.add(session != null && session.isCompleted() && hasExercises(session));
         }
 
-        return new StreakDto(streak, last7Days);
+        return new StreakDto(streak, last7Days, today, calendar.timeZone());
     }
 
     private boolean hasExercises(SessionEntity session) {
@@ -242,14 +235,7 @@ public class PracticeService {
         return session;
     }
 
-    /** Fills an existing, exercise-less session from the chat's candidate pool — shared by
-     * createSession (brand-new session) and startTodaySession's retry on an existing-but-empty
-     * one. No-op (leaves the session exactly as it was) if the pool has nothing usable.
-     * preferences.exerciseCount() caps how many exercises this fills in (was a hardcoded 5).
-     * preferences.exerciseSource(): "own" is just the chat's own games; "mixed" pads the same
-     * ordered own-games list with the shared public pool (ExerciseOrigin.PUBLIC, see
-     * GameAnalysisEntity.fromDataset) — own games always come first, the pool only fills out
-     * what's left, same convention kaizen-miniapp's own picker uses. */
+
     private void populateExercises(SessionEntity session, TelegramChatEntity chat, PreferencesDto preferences) {
         Set<String> usedKeys = usedKeysFor(chat);
 
@@ -289,20 +275,20 @@ public class PracticeService {
         return ordered;
     }
 
-    private void saveCandidates(SessionEntity session, List<Candidate> ordered, int maxCount, int topVariants, int continuationDepth) {
+    private void saveCandidates(SessionEntity session, List<Candidate> ordered, int maxCount, int topVariants, int requiredDepth) {
         int positionOrder = 1;
         int rejectedUnreadable = 0;
         for (Candidate candidate : ordered) {
             if (positionOrder > maxCount) {
                 break;
             }
-            if (assembler.tryDisplayInfo(candidate.sgf()).isEmpty()) {
+            if (assembler.validate(candidate.sgf()).isEmpty()) {
                 rejectedUnreadable++;
                 continue;
             }
             practiceExerciseRepository.save(
                     new PracticeExerciseEntity(session, candidate.game(), candidate.phase(), positionOrder,
-                            topVariants, continuationDepth));
+                            topVariants, requiredDepth));
             positionOrder++;
         }
 
@@ -350,7 +336,7 @@ public class PracticeService {
     private ExerciseDto toExerciseDto(PracticeExerciseEntity exercise) {
         GameAnalysisEntity game = exercise.getGame();
         String sgf = sgfForPhase(game, exercise.getPhase());
-        ExerciseDisplayInfo info = assembler.tryDisplayInfo(sgf)
+        ExerciseDisplayInfo info = assembler.validate(sgf)
                 .orElseThrow(() -> new IllegalStateException("Persisted exercise has unparsable SGF: " + exercise.getId()));
 
         String origin = game.getOrigin() == ExerciseOrigin.PUBLIC ? "dataset" : "personal";
@@ -358,7 +344,7 @@ public class PracticeService {
         return new ExerciseDto(
                 exercise.getId(), game.getId(), exercise.getPhase(), exercise.isCompleted(), origin, sgf,
                 info.opponentName(), info.opponentRank(), info.boardSize(), info.userSign(), info.moveNumber(),
-                exercise.getTopVariants(), exercise.getCurrentDepth(), exercise.getSelectedVariant(), exercise.getStep()
+                exercise.getTopVariants(), exercise.getRequiredDepth()
         );
     }
 

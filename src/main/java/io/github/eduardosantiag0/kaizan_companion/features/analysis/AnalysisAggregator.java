@@ -18,6 +18,7 @@ import io.github.eduardosantiag0.kaizan_companion.features.notifications.Notific
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithFile;
 import io.github.eduardosantiag0.kaizan_companion.features.notifications.replies.ReplyWithText;
 import io.github.eduardosantiag0.kaizan_companion.infra.IStorageProvider;
+import io.github.eduardosantiag0.kaizan_companion.miniapp.practice.PracticeExerciseAssembler;
 import io.github.eduardosantiag0.sgf.model.SgfNode;
 import io.github.eduardosantiag0.sgf.parser.SgfParser;
 import jakarta.mail.MessagingException;
@@ -29,6 +30,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Arrays;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -44,17 +47,19 @@ public class AnalysisAggregator {
     private final TelegramChatRepository chatRepository;
     private final AnalysisJobRepository jobRepository;
     private final KatagoAssembler assembler;
+    private final PracticeExerciseAssembler exerciseAssembler;
     private final IStorageProvider storageProvider;
     private final GameAnalysisRepository gameAnalysisRepository;
     private final UserInfoRepository userInfoRepository;
     private final EmailNotificationProducer emailNotificationProducer;
     private final DriveStorageProducer driveStorageProducer;
 
-    public AnalysisAggregator(NotificationService notificationService, TelegramChatRepository chatRepository, AnalysisJobRepository jobRepository, KatagoAssembler assembler, IStorageProvider storageProvider, GameAnalysisRepository gameAnalysisRepository, UserInfoRepository userInfoRepository, EmailNotificationProducer emailNotificationProducer, DriveStorageProducer driveStorageProducer) {
+    public AnalysisAggregator(NotificationService notificationService, TelegramChatRepository chatRepository, AnalysisJobRepository jobRepository, KatagoAssembler assembler, IStorageProvider storageProvider, GameAnalysisRepository gameAnalysisRepository, UserInfoRepository userInfoRepository, EmailNotificationProducer emailNotificationProducer, DriveStorageProducer driveStorageProducer, PracticeExerciseAssembler exerciseAssembler) {
         this.notificationService = notificationService;
         this.chatRepository = chatRepository;
         this.jobRepository = jobRepository;
         this.assembler = assembler;
+        this.exerciseAssembler = exerciseAssembler;
         this.storageProvider = storageProvider;
         this.gameAnalysisRepository = gameAnalysisRepository;
         this.userInfoRepository = userInfoRepository;
@@ -76,9 +81,6 @@ public class AnalysisAggregator {
                 .orElseThrow(() -> new RuntimeException("Chat not found"));
 
         if (response.output().output() == null) {
-            // Contrato do runpod-handler: falha de processamento = status FAILED,
-            // output null. Sem essa checagem, a linha abaixo que lê
-            // output().criticalPoints() dá NPE pra todo job que falha no RunPod.
             jobEntity.setJobStatus(JobStatus.FAILED);
             jobRepository.save(jobEntity);
             chatEntity.setWaitingForAnalysis(false);
@@ -103,30 +105,36 @@ public class AnalysisAggregator {
                 new ReplyWithText(response.output().chatId(), completionMessage));
 
         List<Future<?>> futures = new ArrayList<>();
-        String[] sgfs = new String[3];
         byte[][] sgfsInBytes = new byte[3][];
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             response.output().output().criticalPoints()
                     .forEach(point -> futures.add(
                             executor.submit(() -> {
-                String node = assembler.attachAnalysisToGame(point, jobEntity.getOriginalGame());
+                String node;
+                try {
+                    node = assembler.attachAnalysisToGame(point, jobEntity.getOriginalGame());
+                } catch (IllegalArgumentException e) {
+                    log.warn("Skipping invalid analysis for job {} phase {}", jobEntity.getId(), point.phase(), e);
+                    return;
+                }
+                if (exerciseAssembler.validate(node).isEmpty()) {
+                    log.warn("Skipping unplayable exercise for job {} phase {}", jobEntity.getId(), point.phase());
+                    return;
+                }
                 byte[] data = node.getBytes(StandardCharsets.UTF_8);
 
                 switch (point.phase()) {
                     case GamePhase.opening -> {
                         sgfsInBytes[0] = data;
-                        sgfs[0] = node;
                         gameAnalysisEntity.setOpeningAnalysed(node);
                     }
                     case GamePhase.middlegame -> {
                         sgfsInBytes[1] = data;
-                        sgfs[1] = node;
                         gameAnalysisEntity.setMiddlegameAnalysed(node);
                     }
                     case GamePhase.endgame -> {
                         sgfsInBytes[2] = data;
-                        sgfs[2] = node;
                         gameAnalysisEntity.setEndgameAnalysed(node);
                     }
                 }
@@ -153,9 +161,6 @@ public class AnalysisAggregator {
                 throw new RuntimeException("Not possible to save your game", e);
             }
         }
-
-
-//        gameAnalysisEntity.setFullAnalysedGame(String.valueOf(assembler.assebleAllPhases(gamePhases)));
 
         gameAnalysisRepository.save(gameAnalysisEntity);
 
@@ -195,6 +200,8 @@ public class AnalysisAggregator {
 
     private void dispatchExternalDeliveries(TelegramChatEntity chatEntity,
                                             byte[][] sgfsInBytes) {
+        byte[] firstPhase = Arrays.stream(sgfsInBytes).filter(Objects::nonNull).findFirst().orElseThrow();
+        String playersName = FilenamePattern.getPlayersName(firstPhase);
         Optional<UserInfoEntity> optionalUser = userInfoRepository.findByChat(chatEntity);
 
         if (optionalUser.isPresent() && optionalUser.get().getEmailAddress() != null)
@@ -204,13 +211,13 @@ public class AnalysisAggregator {
                     new EmailNotificationEvent(
                             emailAddress,
                             sgfsInBytes,
-                            FilenamePattern.getPlayersName(sgfsInBytes[0]),
+                            playersName,
                             chatEntity.getUsername()));
         }
 
         if (chatEntity.isDriveLinked()) {
             driveStorageProducer.send(new DriveStorageEvent(chatEntity.getChatId(), sgfsInBytes,
-                    FilenamePattern.getPlayersName(sgfsInBytes[0]), chatEntity.getUsername()));
+                    playersName, chatEntity.getUsername()));
         }
     }
 }
